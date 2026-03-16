@@ -52,7 +52,7 @@ jobs:
 
       - name: 'Copy Frontend to Backend'
         run: |
-          mkdir -p backend/wwwroot
+          mkdir -p backend/output/wwwroot
           cp -r frontend/dist/* './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output/wwwroot'       
       
       - name: Login to Azure
