@@ -1,0 +1,58 @@
+name: Deploy Backend to Azure Functions
+
+on:
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_NAME: 'ar-auth-api'
+  DOTNET_VERSION: '9.0.x'
+  PROJECT_PATH: 'backend'
+  FRONTEND_PATH: 'frontend'
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+    steps:
+      - name: 'Checkout GitHub Action'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 'Install Frontend Dependencies'
+        run: |
+          cd ${{ env.FRONTEND_PATH }}
+          npm.cmd install
+
+      - name: 'Build Frontend'
+        run: |
+          cd ${{ env.FRONTEND_PATH }}
+          npm.cmd run build
+
+      - name: 'Copy Frontend to Backend'
+        run: |
+          mkdir backend\wwwroot -Force
+          xcopy /E /I /Y frontend\dist\* backend\wwwroot\
+
+      - name: Setup DotNet ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 'Restore Dependencies'
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+
+      - name: 'Build Project'
+        run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release
+
+      - name: 'Publish Project'
+        run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --output ./publish
+
+      - name: 'Run Azure Functions Action'
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+          package: ./publish
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}

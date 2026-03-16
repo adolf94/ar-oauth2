@@ -33,7 +33,7 @@ namespace backend.Endpoints
         }
 
         [Function("Token")]
-        public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "token")] HttpRequest req)
+        public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/token")] HttpRequest req)
         {
             _logger.LogInformation("Token endpoint invoked.");
 

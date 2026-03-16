@@ -67,6 +67,37 @@ namespace backend.Services
                     }
                 }
 
+                // Ensure the management client exists
+                var managementClientId = "ar-auth-management";
+                var managementClient = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == managementClientId);
+
+                if (managementClient == null)
+                {
+                    _logger.LogInformation("Seeding management client: {ClientId}", managementClientId);
+                    
+                    managementClient = new Client
+                    {
+                        Id = Guid.NewGuid(),
+                        ClientId = managementClientId,
+                        ClientSecrets = new List<ClientSecret>(), // Public client
+                        RedirectUris = new List<string> { 
+                            "https://auth.adolfrey.com/auth/callback",
+                            "http://localhost:5174/auth/callback", // Assuming localhost:5174 for second app dev
+                            "http://localhost:5174/" 
+                        },
+                        AllowedScopes = new List<string> { "openid", "profile", "admin", "manage" }
+                    };
+
+                    _dbContext.Clients.Add(managementClient);
+                }
+                else
+                {
+                    if (!managementClient.RedirectUris.Contains("https://auth.adolfrey.com/auth/callback"))
+                    {
+                        managementClient.RedirectUris.Add("https://auth.adolfrey.com/auth/callback");
+                    }
+                }
+
                 await _dbContext.SaveChangesAsync();
                 _logger.LogInformation("Database initialization complete.");
             }

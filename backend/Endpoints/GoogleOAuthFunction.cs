@@ -51,7 +51,7 @@ namespace backend.Endpoints
 
         [Function("GoogleOAuthLogin")]
         public IActionResult Login(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "login/google")] HttpRequest req)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/login/google")] HttpRequest req)
         {
             _logger.LogInformation("Google OAuth login initiated.");
 
@@ -120,7 +120,7 @@ namespace backend.Endpoints
 
         [Function("GoogleOAuthCallback")]
         public async Task<IActionResult> Callback(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "login/google/callback")] HttpRequest req)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/login/google/callback")] HttpRequest req)
         {
             _logger.LogInformation("Google OAuth callback invoked.");
 

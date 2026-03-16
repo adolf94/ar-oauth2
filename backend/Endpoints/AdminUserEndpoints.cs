@@ -25,7 +25,7 @@ namespace backend.Endpoints
         }
 
         [Function("GetUsers")]
-        public async Task<IActionResult> GetUsers([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/users")] HttpRequest req)
+        public async Task<IActionResult> GetUsers([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/manage/users")] HttpRequest req)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;
@@ -36,7 +36,7 @@ namespace backend.Endpoints
         }
 
         [Function("CreateUser")]
-        public async Task<IActionResult> CreateUser([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/users")] HttpRequest req)
+        public async Task<IActionResult> CreateUser([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/manage/users")] HttpRequest req)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;
@@ -52,7 +52,7 @@ namespace backend.Endpoints
         }
         
         [Function("UpdateUser")]
-        public async Task<IActionResult> UpdateUser([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "manage/users/{id}")] HttpRequest req, string id)
+        public async Task<IActionResult> UpdateUser([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/manage/users/{id}")] HttpRequest req, string id)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;
@@ -69,7 +69,7 @@ namespace backend.Endpoints
         }
 
         [Function("DeleteUser")]
-        public async Task<IActionResult> DeleteUser([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "manage/users/{id}")] HttpRequest req, string id)
+        public async Task<IActionResult> DeleteUser([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/manage/users/{id}")] HttpRequest req, string id)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;

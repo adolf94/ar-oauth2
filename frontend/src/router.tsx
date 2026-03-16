@@ -23,6 +23,7 @@ const loginRoute = createRoute({
   component: Login,
 });
 
+
 const authCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/auth/callback',

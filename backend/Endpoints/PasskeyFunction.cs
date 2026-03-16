@@ -51,7 +51,7 @@ namespace backend.Endpoints
 
         [Function("PasskeyLogin")]
         public async Task<IActionResult> Login(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "passkey/login")] HttpRequest req)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/passkey/login")] HttpRequest req)
         {
             _logger.LogInformation("Passkey login initiated.");
 
@@ -100,7 +100,7 @@ namespace backend.Endpoints
 
         [Function("PasskeyRegisterStart")]
         public async Task<IActionResult> RegisterStart(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "passkey/register/start")] HttpRequest req)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/passkey/register/start")] HttpRequest req)
         {
             // Try to get email from authenticated user first
             var (principal, authError) = AuthHelper.ValidateToken(req, _tokenService, _logger);
@@ -144,7 +144,7 @@ namespace backend.Endpoints
 
         [Function("ListPasskeys")]
         public async Task<IActionResult> ListPasskeys(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "passkey/list")] HttpRequest req)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/passkey/list")] HttpRequest req)
         {
             var (principal, error) = AuthHelper.ValidateToken(req, _tokenService, _logger);
             if (error != null) return error;
@@ -166,7 +166,7 @@ namespace backend.Endpoints
 
         [Function("DeletePasskey")]
         public async Task<IActionResult> DeletePasskey(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "passkey/{credentialId}")] HttpRequest req, string credentialId)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/passkey/{credentialId}")] HttpRequest req, string credentialId)
         {
             var (principal, error) = AuthHelper.ValidateToken(req, _tokenService, _logger);
             if (error != null) return error;

@@ -26,7 +26,7 @@ namespace backend.Endpoints
         }
 
         [Function("GetClients")]
-        public async Task<IActionResult> GetClients([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "manage/clients")] HttpRequest req)
+        public async Task<IActionResult> GetClients([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/manage/clients")] HttpRequest req)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;
@@ -37,7 +37,7 @@ namespace backend.Endpoints
         }
 
         [Function("CreateClient")]
-        public async Task<IActionResult> CreateClient([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/clients")] HttpRequest req)
+        public async Task<IActionResult> CreateClient([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/manage/clients")] HttpRequest req)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;
@@ -55,7 +55,7 @@ namespace backend.Endpoints
         }
 
         [Function("AddClientSecret")]
-        public async Task<IActionResult> AddClientSecret([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "manage/clients/{id}/secrets")] HttpRequest req, string id)
+        public async Task<IActionResult> AddClientSecret([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/manage/clients/{id}/secrets")] HttpRequest req, string id)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;
@@ -71,7 +71,7 @@ namespace backend.Endpoints
         }
         
         [Function("UpdateClient")]
-        public async Task<IActionResult> UpdateClient([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "manage/clients/{id}")] HttpRequest req, string id)
+        public async Task<IActionResult> UpdateClient([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/manage/clients/{id}")] HttpRequest req, string id)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;
@@ -90,7 +90,7 @@ namespace backend.Endpoints
         }
 
         [Function("DeleteClient")]
-        public async Task<IActionResult> DeleteClient([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "manage/clients/{id}")] HttpRequest req, string id)
+        public async Task<IActionResult> DeleteClient([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/manage/clients/{id}")] HttpRequest req, string id)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;
@@ -104,7 +104,7 @@ namespace backend.Endpoints
         }
 
         [Function("DeleteClientSecret")]
-        public async Task<IActionResult> DeleteClientSecret([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "manage/clients/{id}/secrets/{secretId}")] HttpRequest req, string id, string secretId)
+        public async Task<IActionResult> DeleteClientSecret([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/manage/clients/{id}/secrets/{secretId}")] HttpRequest req, string id, string secretId)
         {
             var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
             if (error != null) return error;

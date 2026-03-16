@@ -19,9 +19,9 @@ export default function AuthGuard({ children, requiredRole }: AuthGuardProps) {
         const { verifier, challenge } = await import('../pkce').then(m => m.generatePkce());
         sessionStorage.setItem('pkce_verifier', verifier);
 
-        // Redirect to login with self-referencing client_id
+        // Redirect to central auth system
         const params = new URLSearchParams({
-          client_id: 'ar-auth-system',
+          client_id: 'ar-auth-management',
           redirect_uri: window.location.origin + '/auth/callback',
           state: location.pathname,
           scope: 'openid profile manage admin',
@@ -29,8 +29,8 @@ export default function AuthGuard({ children, requiredRole }: AuthGuardProps) {
           code_challenge: challenge,
           code_challenge_method: 'S256'
         });
-        
-        window.location.href = `/login?${params.toString()}`;
+        const authUri = window.webConfig?.authUri || 'https://auth.adolfrey.com';
+        window.location.href = `${authUri}/api/authorize?${params.toString()}`;
       };
 
       initiateLogin();

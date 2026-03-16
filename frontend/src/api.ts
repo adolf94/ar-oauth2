@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const getAuthUri = () => window.webConfig?.authUri || 'https://auth.adolfrey.com';
+
 const api = axios.create({
-  baseURL: '/api'
+  baseURL: `${getAuthUri()}/api`
 });
 
 let isRefreshing = false;
@@ -58,10 +60,10 @@ api.interceptors.response.use(
       }
 
       try {
-        const res = await axios.post('/api/token', {
+        const res = await axios.post(`${getAuthUri()}/api/token`, {
           grant_type: 'refresh_token',
           refresh_token: refreshToken,
-          client_id: 'ar-auth-system'
+          client_id: 'ar-auth-management'
         });
 
         const { access_token, refresh_token } = res.data;

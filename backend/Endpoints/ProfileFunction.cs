@@ -24,7 +24,7 @@ namespace backend.Endpoints
 
         [Function("GetProfile")]
         public async Task<IActionResult> GetProfile(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "profile")] HttpRequest req)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/profile")] HttpRequest req)
         {
             var (principal, error) = AuthHelper.ValidateToken(req, _tokenService, _logger);
             if (error != null) return error;

@@ -32,7 +32,7 @@ namespace backend.Endpoints
 
         [Function("UserInfo")]
         public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "userinfo")] HttpRequest req)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "api/userinfo")] HttpRequest req)
         {
             _logger.LogInformation("UserInfo endpoint invoked.");
 

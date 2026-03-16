@@ -9,6 +9,9 @@ using backend.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.ApplicationInsights.Extensibility;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
@@ -33,28 +36,16 @@ var host = new HostBuilder()
         // Pass configuration to the DbContext
         services.AddDbContext<AppDbContext>(options =>
         {
-            // Log SQL-like queries to the console
-            options.LogTo(Console.WriteLine, Microsoft.Extensions.Logging.LogLevel.Information)
-                   .EnableSensitiveDataLogging();
-
-            var configureCosmos = (Microsoft.EntityFrameworkCore.Infrastructure.CosmosDbContextOptionsBuilder o) =>
-            {
-                o.ConnectionMode(ConnectionMode.Gateway);
-                o.HttpClientFactory(() => new HttpClient(new HttpClientHandler
-                {
-                    ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                }));
-            };
 
             if (string.IsNullOrEmpty(appConfig.Cosmos.Key))
             {
                 // Use Managed Identity if NO key is provided
-                options.UseCosmos(appConfig.Cosmos.Endpoint, new DefaultAzureCredential(), appConfig.Cosmos.DatabaseName, configureCosmos);
+                options.UseCosmos(appConfig.Cosmos.Endpoint, new DefaultAzureCredential(), appConfig.Cosmos.DatabaseName);
             }
             else
             {
                 // Use Key if provided
-                options.UseCosmos(appConfig.Cosmos.Endpoint, appConfig.Cosmos.Key, appConfig.Cosmos.DatabaseName, configureCosmos);
+                options.UseCosmos(appConfig.Cosmos.Endpoint, appConfig.Cosmos.Key, appConfig.Cosmos.DatabaseName);
             }
         });
 
@@ -66,13 +57,43 @@ var host = new HostBuilder()
         services.AddScoped<ClientService>();
         services.AddScoped<AuthCodeService>();
         services.AddScoped<TokenService>();
+        services.AddScoped<DatabaseInitializer>();
 
         services.AddPasswordlessSdk(options =>
         {
             options.ApiSecret = appConfig.Passwordless.ApiSecret;
             options.ApiUrl = appConfig.Passwordless.ApiUrl;
         });
+
+        // Add Application Insights
+        services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
+
+        // Add CORS
+        services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                policy.WithOrigins("https://id.adolfrey.com", "http://localhost:5174")
+                      .AllowAnyHeader()
+                      .AllowAnyMethod()
+                      .AllowCredentials();
+            });
+        });
+    })
+    .ConfigureLogging(logging =>
+    {
+        logging.AddApplicationInsights();
+        logging.AddFilter<Microsoft.Extensions.Logging.ApplicationInsights.ApplicationInsightsLoggerProvider>("", LogLevel.Information);
     })
     .Build();
 
-host.Run();
+
+// Initialize the database (seed clients)
+using (var scope = host.Services.CreateScope())
+{
+    var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
+    await initializer.InitializeAsync();
+}
+
+await host.RunAsync();

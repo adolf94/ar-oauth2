@@ -26,13 +26,14 @@ export default function AuthCallback() {
         const verifier = sessionStorage.getItem('pkce_verifier') || '';
         sessionStorage.removeItem('pkce_verifier'); // Clean up
 
-        const response = await fetch('/api/token', {
+        const authUri = window.webConfig?.authUri || 'https://auth.adolfrey.com';
+        const response = await fetch(`${authUri}/api/token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             grant_type: 'authorization_code',
             code,
-            client_id: 'ar-auth-system',
+            client_id: 'ar-auth-management',
             redirect_uri: window.location.origin + '/auth/callback',
             code_verifier: verifier
           }),

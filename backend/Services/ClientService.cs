@@ -68,8 +68,25 @@ namespace backend.Services
 
         public bool VerifyClientSecret(string plainSecret, List<ClientSecret> secrets)
         {
-            if (secrets == null || !secrets.Any()) return false;
-            return secrets.Any(s => BCrypt.Net.BCrypt.Verify(plainSecret, s.HashedSecret));
+            if (secrets == null || !secrets.Any() || string.IsNullOrEmpty(plainSecret)) return false;
+            
+            foreach (var secret in secrets)
+            {
+                try 
+                {
+                    if (string.IsNullOrEmpty(secret.HashedSecret)) continue;
+                    
+                    // BCrypt.Verify throws "Could not find any recognizable digits" if the hash is malformed.
+                    if (BCrypt.Net.BCrypt.Verify(plainSecret, secret.HashedSecret))
+                        return true;
+                }
+                catch (Exception ex)
+                {
+                    // Log the error but don't crash. A malformed hash shouldn't bring down the token endpoint.
+                    Console.WriteLine($"[ERROR] Malformed client secret hash detected: {ex.Message}");
+                }
+            }
+            return false;
         }
 
         public string GenerateSecret(int length = 32)
