@@ -39,16 +39,16 @@ namespace backend.Endpoints
 
             // 1. Validate required parameters
             if (string.IsNullOrEmpty(request.client_id) || request.response_type != "code")
-                return Error("invalid_request", "client_id and response_type=code are required.");
+                return RedirectToError("invalid_request", "client_id and response_type=code are required.");
 
             // 2. Validate client_id and redirect_uri against the DB
             var client = await _clientService.GetByClientIdAsync(request.client_id);
             if (client == null)
-                return Error("unauthorized_client", "Unknown client_id.");
+                return RedirectToError("unauthorized_client", "Unknown client_id.");
 
             if (!string.IsNullOrEmpty(request.redirect_uri) &&
                 !client.RedirectUris.Contains(request.redirect_uri))
-                return Error("invalid_request", "redirect_uri is not registered for this client.");
+                return RedirectToError("invalid_request", "redirect_uri is not registered for this client.");
 
             // 3. Redirect to the local SPA login page, forwarding all PKCE params
             var loginUrl = $"/login" +
@@ -62,7 +62,7 @@ namespace backend.Endpoints
             return new RedirectResult(loginUrl);
         }
 
-        private static BadRequestObjectResult Error(string error, string description) =>
-            new BadRequestObjectResult(new { error, error_description = description });
+        private static RedirectResult RedirectToError(string error, string description) =>
+            new RedirectResult($"/error?error={Uri.EscapeDataString(error)}&error_description={Uri.EscapeDataString(description)}");
     }
 }

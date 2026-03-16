@@ -9,6 +9,7 @@ const AdminUsers = lazyRouteComponent(() => import('./pages/AdminUsers'));
 const Profile = lazyRouteComponent(() => import('./pages/Profile'));
 const AuthCallback = lazyRouteComponent(() => import('./pages/AuthCallback'));
 const PopupCallback = lazyRouteComponent(() => import('./pages/PopupCallback'));
+const ErrorPage = lazyRouteComponent(() => import('./pages/ErrorPage'));
 
 const rootRoute = createRootRoute();
 
@@ -36,7 +37,6 @@ const popupCallbackRoute = createRoute({
   path: '/auth/popup-callback',
   component: PopupCallback,
 });
-
 const profileRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/profile',
@@ -45,6 +45,12 @@ const profileRoute = createRoute({
       <Profile />
     </AuthGuard>
   ),
+});
+
+const errorPageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/error',
+  component: ErrorPage,
 });
 
 const adminRoute = createRoute({
@@ -83,7 +89,8 @@ const routeTree = rootRoute.addChildren([
   authCallbackRoute, 
   popupCallbackRoute,
   profileRoute, 
-  adminRoute
+  adminRoute,
+  errorPageRoute
 ]);
 
 export const router = createRouter({ routeTree });
