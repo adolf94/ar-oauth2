@@ -1,7 +1,6 @@
-import { Box, Button, Card, CardContent, TextField, Typography, Container, Divider } from '@mui/material';
+import { Box, Button, Card, CardContent, Typography, Container } from '@mui/material';
 import { Google as GoogleIcon, Fingerprint as FingerprintIcon, Telegram as TelegramIcon } from '@mui/icons-material';
 import { useSearch } from '@tanstack/react-router';
-import { useState } from 'react';
 import * as Passwordless from '@passwordlessdev/passwordless-client';
 import api from '../api';
 import ThemeSwitcher from '../components/ThemeSwitcher';
@@ -22,22 +21,6 @@ interface LoginSearchParams {
 
 export default function Login() {
   const searchParams = useSearch({ strict: false }) as LoginSearchParams;
-
-  const performLoginRequest = async (payload: any) => {
-    try {
-      const response = await api.post('/login', payload);
-      const data = response.data;
-      if (data.code && searchParams.redirect_uri) {
-        window.location.href = `${searchParams.redirect_uri}?code=${data.code}&state=${searchParams.state || ''}`;
-      } else {
-        alert('Missing redirect URI or code from backend.');
-      }
-    } catch (err: any) {
-      console.error("Login error:", err);
-      alert('Login failed. Please check your credentials.');
-    }
-  };
-
 
 
   const handleGoogleLogin = () => {
