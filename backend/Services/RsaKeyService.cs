@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
 using Azure.Identity;
 using Azure.Security.KeyVault.Keys;
+using Azure.Security.KeyVault.Secrets;
 using System.Threading.Tasks;
 
 namespace backend.Services
@@ -68,27 +69,33 @@ namespace backend.Services
         {
             try
             {
-                var client = new KeyClient(new Uri(_appConfig.Jwt.KeyVaultUri!), new DefaultAzureCredential());
-                
-                // Fetch all versions of the "ar-auth-signing-key"
-                // This allows the system to validate tokens signed with older keys during rotation.
-                await foreach (var keyProps in client.GetPropertiesOfKeyVersionsAsync("ar-auth-signing-key"))
+                var secretClient = new SecretClient(new Uri(_appConfig.Jwt.KeyVaultUri!), new DefaultAzureCredential());
+
+                // Fetch all versions of the "ar-auth-signing-key" secret
+                // This secret should contain the PEM-encoded private key
+                await foreach (var secretProps in secretClient.GetPropertiesOfSecretVersionsAsync(_appConfig.Jwt.SecretName))
                 {
-                    if (keyProps.Enabled == true)
+                    if (secretProps.Enabled == true)
                     {
-                        var keyVersion = await client.GetKeyAsync("ar-auth-signing-key", keyProps.Version);
-                        var rsa = keyVersion.Value.Key.ToRSA();
-                        _keys.Add(new RsaKeyInfo 
-                        { 
-                            KeyId = keyProps.Version, // Use the version ID as the KeyId
-                            Rsa = rsa 
-                        });
+                        var secretValue = await secretClient.GetSecretAsync(_appConfig.Jwt.SecretName, secretProps.Version);
+                        var pem = secretValue.Value.Value;
+
+                        if (!string.IsNullOrEmpty(pem))
+                        {
+                            var rsa = RSA.Create();
+                            rsa.ImportFromPem(pem);
+                            _keys.Add(new RsaKeyInfo
+                            {
+                                KeyId = secretProps.Version, // Use the version ID as the KeyId
+                                Rsa = rsa
+                            });
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Failed to fetch keys from Key Vault: {ex.Message}");
+                Console.WriteLine($"[ERROR] Failed to fetch secrets from Key Vault: {ex.Message}");
             }
         }
 
@@ -97,13 +104,14 @@ namespace backend.Services
             // Use the specified primary key, or the latest one loaded
             var keyInfo = _keys.FirstOrDefault(k => k.KeyId == _primaryKeyId) ?? _keys.LastOrDefault();
             if (keyInfo == null) throw new InvalidOperationException("No RSA keys available.");
-            
+
             return new RsaSecurityKey(keyInfo.Rsa) { KeyId = keyInfo.KeyId };
         }
 
         public IEnumerable<RsaSecurityKey> GetValidationKeys()
         {
-            return _keys.Select(k => {
+            return _keys.Select(k =>
+            {
                 // Ensure we only export public parameters for validation keys
                 var parameters = k.Rsa.ExportParameters(false);
                 var publicRsa = RSA.Create();

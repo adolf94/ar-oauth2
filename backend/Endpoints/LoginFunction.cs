@@ -13,7 +13,6 @@ namespace backend.Endpoints
 {
     public class LoginRequest
     {
-        public string email { get; set; } = string.Empty;
         public string google_id_token { get; set; } = string.Empty;
         
         // For testing only: email lookup with no password.
@@ -77,15 +76,9 @@ namespace backend.Endpoints
                     return new UnauthorizedObjectResult(new { error = "invalid_token", error_description = "Invalid Google ID token." });
                 }
             }
-            // 2. Fallback Testing Flow (email only)
-            else if (!string.IsNullOrEmpty(loginReq.email))
-            {
-                targetEmail = loginReq.email;
-                _logger.LogInformation("Using testing fallback flow for {Email}", targetEmail);
-            }
             else
             {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Either email or google_id_token is required." });
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "google_id_token is required." });
             }
 
             // Look up the user by email. Auto-create a stub user for development/testing if not found.

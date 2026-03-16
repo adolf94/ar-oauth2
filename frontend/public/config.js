@@ -1,4 +1,5 @@
 window.webConfig = {
-    "authUri": "https://auth.adolfrey.com",
-    "loginWithEmail": false
+    "authUri2": "https://auth.adolfrey.com",
+    "authUri": "http://localhost:5173",
+    "redirectUri": "http://localhost:5173/auth/callback"
 }

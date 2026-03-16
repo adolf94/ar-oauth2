@@ -13,7 +13,7 @@ export default function AuthGuard({ children, requiredRole }: AuthGuardProps) {
 
   useEffect(() => {
     const token = sessionStorage.getItem('access_token');
-    
+
     if (!token) {
       const initiateLogin = async () => {
         const { verifier, challenge } = await import('../pkce').then(m => m.generatePkce());
@@ -29,7 +29,7 @@ export default function AuthGuard({ children, requiredRole }: AuthGuardProps) {
           code_challenge: challenge,
           code_challenge_method: 'S256'
         });
-        const authUri = window.webConfig?.authUri || 'https://auth.adolfrey.com';
+        const authUri = window.webConfig?.authUri;
         window.location.href = `${authUri}/api/authorize?${params.toString()}`;
       };
 

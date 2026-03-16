@@ -9,6 +9,10 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:7112',
         changeOrigin: true
+      },
+      '/.well-known': {
+        target: 'http://localhost:7112',
+        changeOrigin: true
       }
     }
   }

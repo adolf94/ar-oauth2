@@ -22,8 +22,6 @@ interface LoginSearchParams {
 
 export default function Login() {
   const searchParams = useSearch({ strict: false }) as LoginSearchParams;
-  const [email, setEmail] = useState('');
-  const showEmailLogin = window.webConfig?.loginWithEmail ?? import.meta.env.DEV;
 
   const performLoginRequest = async (payload: any) => {
     try {
@@ -40,18 +38,7 @@ export default function Login() {
     }
   };
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await performLoginRequest({
-      email,
-      client_id: searchParams.client_id,
-      redirect_uri: searchParams.redirect_uri,
-      code_challenge: searchParams.code_challenge,
-      code_challenge_method: searchParams.code_challenge_method,
-      scope: searchParams.scope,
-      state: searchParams.state
-    });
-  };
+
 
   const handleGoogleLogin = () => {
     const params = new URLSearchParams();
@@ -136,38 +123,6 @@ export default function Login() {
 
         <Card sx={{ boxShadow: (theme) => theme.palette.mode === 'dark' ? '0 8px 32px rgba(0,0,0,0.8)' : '0 8px 32px rgba(0,0,0,0.1)' }}>
           <CardContent sx={{ p: 4 }}>
-            {showEmailLogin && (
-              <>
-                <form onSubmit={handleEmailLogin}>
-                  <TextField
-                    label="Email Address"
-                    type="email"
-                    fullWidth
-                    margin="normal"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    sx={{ mb: 2 }}
-                    InputProps={{ sx: { fontFamily: "'JetBrains Mono', monospace" } }}
-                  />
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    fullWidth
-                    size="large"
-                    sx={{ py: 1.5, fontWeight: 700, mt: 1, fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    Authenticate
-                  </Button>
-                </form>
-
-                <Box sx={{ my: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Divider sx={{ flex: 1 }} />
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>OR</Typography>
-                  <Divider sx={{ flex: 1 }} />
-                </Box>
-              </>
-            )}
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Button
