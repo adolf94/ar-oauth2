@@ -47,6 +47,10 @@ namespace backend.Endpoints
             }
 
             var notFoundResponse = req.CreateResponse(HttpStatusCode.NotFound);
+
+
+            _logger.LogInformation($"File was not found in {filePath}");
+
             await notFoundResponse.WriteStringAsync("Not Found");
             return notFoundResponse;
         }
