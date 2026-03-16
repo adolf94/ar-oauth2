@@ -50,9 +50,25 @@ jobs:
       - name: 'Publish Project'
         run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --output ./publish
 
+      - name: Login to Azure
+            uses: azure/login@v2
+            with:
+              client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_95EA35FAE7CB4F2985657FDFDAB866E0 }}
+              tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_0F1EC04C0A004072B025788425900D7F }}
+              subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_AF4187BD34BE4D3387FA06733C036584 }}
+
       - name: 'Run Azure Functions Action'
         uses: Azure/functions-action@v1
         with:
           app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
           package: ./publish
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+
+      - name: 'Run Azure Functions Action'
+        uses: Azure/functions-action@v1
+        id: fa
+        with:
+          app-name: 'ar-auth'
+          slot-name: 'Production'
+          package: ./publish
+          
