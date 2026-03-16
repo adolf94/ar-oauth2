@@ -8,7 +8,6 @@ import Profile from './pages/Profile';
 import AuthCallback from './pages/AuthCallback';
 import PopupCallback from './pages/PopupCallback';
 import AuthGuard from './components/AuthGuard';
-import { Box, Button, Typography } from '@mui/material';
 
 const rootRoute = createRootRoute();
 
