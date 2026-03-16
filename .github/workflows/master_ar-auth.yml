@@ -39,8 +39,8 @@ jobs:
 
       - name: 'Copy Frontend to Backend'
         run: |
-          mkdir backend\wwwroot -Force
-          xcopy /E /I /Y frontend\dist\* backend\wwwroot\
+          mkdir -p backend/wwwroot
+          cp -r frontend/dist/* backend/wwwroot/
 
       - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
         uses: actions/setup-dotnet@v1
