@@ -1,4 +1,5 @@
-name: Deploy Backend to Azure Functions
+
+name: Build and deploy dotnet core project
 
 on:
   workflow_dispatch:

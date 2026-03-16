@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './backend' # set this to the path to your web app project, defaults to the repository root
   DOTNET_VERSION: '9.0.x' # set this to the dotnet version to use
 
 jobs:
@@ -20,6 +20,26 @@ jobs:
     steps:
       - name: 'Checkout GitHub Action'
         uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 'Install Frontend Dependencies'
+        run: |
+          cd ${{ env.FRONTEND_PATH }}
+          npm.cmd install
+
+      - name: 'Build Frontend'
+        run: |
+          cd ${{ env.FRONTEND_PATH }}
+          npm.cmd run build
+
+      - name: 'Copy Frontend to Backend'
+        run: |
+          mkdir backend\wwwroot -Force
+          xcopy /E /I /Y frontend\dist\* backend\wwwroot\
 
       - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
         uses: actions/setup-dotnet@v1
@@ -46,5 +66,5 @@ jobs:
         with:
           app-name: 'ar-auth'
           slot-name: 'Production'
-          package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+          package: './output"
           
