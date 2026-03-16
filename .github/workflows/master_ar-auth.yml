@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: './backend' # set this to the path to your web app project, defaults to the repository root
-  FRONTEND_PATH: "./frontend"
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: 'backend' # set this to the path to your web app project, defaults to the repository root
+  FRONTEND_PATH: "frontend"
   DOTNET_VERSION: '9.0.x' # set this to the dotnet version to use
 
 jobs:
