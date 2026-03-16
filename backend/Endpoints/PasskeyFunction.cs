@@ -120,7 +120,7 @@ namespace backend.Endpoints
             var user = await _userService.GetByEmailAsync(email);
             if (user == null)
             {
-                 user = await _userService.CreateUserAsync(email, new List<string> { "user" });
+                user = await _userService.CreateUserAsync(email, null, new List<string> { "user" });
             }
 
             var registerOptions = new RegisterOptions(user.Id, email)

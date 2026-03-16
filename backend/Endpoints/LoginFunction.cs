@@ -93,7 +93,7 @@ namespace backend.Endpoints
             if (user == null)
             {
                 _logger.LogInformation("User {Email} not found — creating stub user for testing/Google auto-provisioning.", targetEmail);
-                user = await _userService.CreateUserAsync(targetEmail, new System.Collections.Generic.List<string> { "user" });
+                user = await _userService.CreateUserAsync(targetEmail, null, new System.Collections.Generic.List<string> { "user" });
             }
 
             // Generate authorization code

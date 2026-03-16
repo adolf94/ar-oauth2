@@ -39,5 +39,6 @@ namespace backend.Configuration
     {
         public string Issuer { get; set; } = string.Empty;
         public string? RsaPrimaryKeyId { get; set; }
+        public string? KeyVaultUri { get; set; }
     }
 }
