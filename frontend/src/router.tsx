@@ -1,13 +1,14 @@
-import { createRootRoute, createRoute, createRouter, Navigate } from '@tanstack/react-router';
-import Login from './pages/Login';
-import AdminLayout from './layouts/AdminLayout';
-import AdminDashboard from './pages/AdminDashboard';
-import AdminApps from './pages/AdminApps';
-import AdminUsers from './pages/AdminUsers';
-import Profile from './pages/Profile';
-import AuthCallback from './pages/AuthCallback';
-import PopupCallback from './pages/PopupCallback';
+import { createRootRoute, createRoute, createRouter, Navigate, lazyRouteComponent } from '@tanstack/react-router';
 import AuthGuard from './components/AuthGuard';
+
+const Login = lazyRouteComponent(() => import('./pages/Login'));
+const AdminLayout = lazyRouteComponent(() => import('./layouts/AdminLayout'));
+const AdminDashboard = lazyRouteComponent(() => import('./pages/AdminDashboard'));
+const AdminApps = lazyRouteComponent(() => import('./pages/AdminApps'));
+const AdminUsers = lazyRouteComponent(() => import('./pages/AdminUsers'));
+const Profile = lazyRouteComponent(() => import('./pages/Profile'));
+const AuthCallback = lazyRouteComponent(() => import('./pages/AuthCallback'));
+const PopupCallback = lazyRouteComponent(() => import('./pages/PopupCallback'));
 
 const rootRoute = createRootRoute();
 

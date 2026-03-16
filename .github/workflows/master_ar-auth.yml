@@ -37,10 +37,6 @@ jobs:
           cd ${{ env.FRONTEND_PATH }}
           npm run build
 
-      - name: 'Copy Frontend to Backend'
-        run: |
-          mkdir -p backend/wwwroot
-          cp -r frontend/dist/* backend/wwwroot/
 
       - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
         uses: actions/setup-dotnet@v1
@@ -53,6 +49,11 @@ jobs:
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
           dotnet build --configuration Release --output ./output
           popd
+
+      - name: 'Copy Frontend to Backend'
+        run: |
+          mkdir -p backend/wwwroot
+          cp -r frontend/dist/* './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output/wwwroot'       
       
       - name: Login to Azure
         uses: azure/login@v2
