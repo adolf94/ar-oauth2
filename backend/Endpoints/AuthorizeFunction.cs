@@ -51,7 +51,7 @@ namespace backend.Endpoints
                 return Error("invalid_request", "redirect_uri is not registered for this client.");
 
             // 3. Redirect to the frontend login page, forwarding all PKCE params
-            var loginUrl = $"http://localhost:5173/login" +
+            var loginUrl = $"/login" +
                            $"?client_id={Uri.EscapeDataString(request.client_id)}" +
                            $"&redirect_uri={Uri.EscapeDataString(request.redirect_uri)}" +
                            $"&state={Uri.EscapeDataString(request.state)}" +
