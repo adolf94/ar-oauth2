@@ -30,8 +30,9 @@ namespace backend.Endpoints
                 return req.CreateResponse(HttpStatusCode.NotFound);
             }
 
+            var baseDir = AppContext.BaseDirectory;
             var safePath = string.IsNullOrEmpty(path) ? "index.html" : path.Replace("/", Path.DirectorySeparatorChar.ToString());
-            var filePath = Path.Combine(_env.ContentRootPath, "wwwroot", safePath);
+            var filePath = Path.Combine(baseDir, "wwwroot", safePath);
 
             // If an explicit file matches, serve it
             if (File.Exists(filePath))
@@ -40,7 +41,7 @@ namespace backend.Endpoints
             }
 
             // Otherwise, serve the SPA index.html
-            var indexPath = Path.Combine(_env.ContentRootPath, "wwwroot", "index.html");
+            var indexPath = Path.Combine(baseDir, "wwwroot", "index.html");
             if (File.Exists(indexPath))
             {
                 return await ServeFileAsync(req, indexPath, "text/html; charset=utf-8");
