@@ -26,7 +26,7 @@ namespace backend.Endpoints
         [Function("Jwks")]
         public IActionResult Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get",
-                Route = ".well-known/jwks.json")] HttpRequest req)
+                Route = "api/.well-known/jwks.json")] HttpRequest req)
         {
             _logger.LogInformation("JWKS endpoint invoked.");
 

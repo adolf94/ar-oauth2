@@ -26,7 +26,7 @@ namespace backend.Endpoints
         [Function("OpenIdConfiguration")]
         public IActionResult Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get",
-                Route = ".well-known/openid-configuration")] HttpRequest req)
+                Route = "api/.well-known/openid-configuration")] HttpRequest req)
         {
             _logger.LogInformation("OpenID configuration endpoint invoked.");
 

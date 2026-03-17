@@ -25,7 +25,7 @@ namespace backend.Endpoints
             string? path)
         {
             // Do not intercept API requests or well-known endpoints
-            if (path != null && (path.StartsWith("api/") || path.StartsWith(".well-known/")))
+            if (path != null && path.StartsWith("api/"))
             {
                 return req.CreateResponse(HttpStatusCode.NotFound);
             }
