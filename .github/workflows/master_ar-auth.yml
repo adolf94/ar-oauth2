@@ -39,7 +39,7 @@ jobs:
         uses: restackio/update-json-file-action@2.1
         with:
           file:  ${{ env.FRONTEND_PATH }}/dist/config.json
-          fields: '{"redirectUri":"${{ vars.REDIRECT_URI }}", "authUrl":"${{ vars.AUTH_API }}"}'
+          fields: '{"redirectUri":"${{ vars.REDIRECT_URI }}", "authUri":"${{ vars.AUTH_API }}"}'
 
       - name: Move/Rename config.json to js
         run: |
