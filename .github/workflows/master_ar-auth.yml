@@ -40,7 +40,6 @@ jobs:
         with:
           file:  ${{ env.FRONTEND_PATH }}/dist/config.json
           fields: '{"redirectUri":"${{ vars.REDIRECT_URI }}", "authUrl":"${{ vars.AUTH_API }}"}'
-          
 
       - name: Move/Rename config.json to js
         run: |
@@ -48,9 +47,8 @@ jobs:
               cat config.json >> config.js
         working-directory:  ${{ env.FRONTEND_PATH }}/dist
 
-        
       - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
-        uses: actions/setup-dotnet@v1
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -58,23 +56,35 @@ jobs:
         shell: bash
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          dotnet build --configuration Release --output ./output
+          dotnet publish --configuration Release --output ./output
           popd
 
       - name: 'Copy Frontend to Backend'
         run: |
-          mkdir -p backend/output/wwwroot
-          cp -r frontend/dist/* './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output/wwwroot'       
-      
-    
+          mkdir -p ./${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output/wwwroot
+          cp -r frontend/dist/* ./${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output/wwwroot/
+
+      - name: 'Upload Build Artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-app-package
+          path: ./${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output
+          retention-days: 1
+
   deploy:
     runs-on: ubuntu-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write
+      contents: read
 
     steps:
+      - name: 'Download Build Artifact'
+        uses: actions/download-artifact@v4
+        with:
+          name: function-app-package
+          path: ./package
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -88,4 +98,4 @@ jobs:
         with:
           app-name: 'ar-auth'
           slot-name: 'Production'
-          package: './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'          
+          package: ./package
