@@ -12,12 +12,9 @@ env:
   DOTNET_VERSION: '9.0.x' # set this to the dotnet version to use
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     environment: AZURE
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
 
     steps:
       - name: 'Checkout GitHub Action'
@@ -69,6 +66,14 @@ jobs:
           mkdir -p backend/output/wwwroot
           cp -r frontend/dist/* './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output/wwwroot'       
       
+    
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+
+    steps:
       - name: Login to Azure
         uses: azure/login@v2
         with:
