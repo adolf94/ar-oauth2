@@ -64,11 +64,17 @@ jobs:
           mkdir -p ./${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output/wwwroot
           cp -r frontend/dist/* ./${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output/wwwroot/
 
+      - name: 'Zip artifact for deployment'
+        run: |
+          pushd ./${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output
+          zip -r ../../release.zip .
+          popd
+
       - name: 'Upload Build Artifact'
         uses: actions/upload-artifact@v4
         with:
           name: function-app-package
-          path: ./${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output
+          path: release.zip
           retention-days: 1
 
   deploy:
@@ -83,7 +89,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: function-app-package
-          path: ./package
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -98,4 +103,4 @@ jobs:
         with:
           app-name: 'ar-auth'
           slot-name: 'Production'
-          package: ./package
+          package: ./release.zip
