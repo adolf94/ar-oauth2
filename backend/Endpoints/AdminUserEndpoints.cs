@@ -16,12 +16,65 @@ namespace backend.Endpoints
         private readonly ILogger<AdminUserEndpoints> _logger;
         private readonly UserService _userService;
         private readonly TokenService _tokenService;
+        private readonly UserClientScopeService _userScopeService;
 
-        public AdminUserEndpoints(ILogger<AdminUserEndpoints> logger, UserService userService, TokenService tokenService)
+        public AdminUserEndpoints(
+            ILogger<AdminUserEndpoints> logger, 
+            UserService userService, 
+            TokenService tokenService,
+            UserClientScopeService userScopeService)
         {
             _logger = logger;
             _userService = userService;
             _tokenService = tokenService;
+            _userScopeService = userScopeService;
+        }
+
+        [Function("GetUserClientScopes")]
+        public async Task<IActionResult> GetUserClientScopes([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/manage/users/{userId}/scopes")] HttpRequest req, string userId)
+        {
+            var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
+            if (error != null) return error;
+
+            var scopes = await _userScopeService.GetUserScopesAsync(userId);
+            return new OkObjectResult(scopes);
+        }
+
+        [Function("AssignUserClientScope")]
+        public async Task<IActionResult> AssignUserClientScope([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/manage/users/{userId}/scopes")] HttpRequest req, string userId)
+        {
+            var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
+            if (error != null) return error;
+
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var data = JsonSerializer.Deserialize<UserClientScope>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (data == null || string.IsNullOrEmpty(data.ClientId) || string.IsNullOrEmpty(data.Scope))
+                return new BadRequestObjectResult("ClientId and Scope are required.");
+
+            try
+            {
+                var mapping = await _userScopeService.AssignScopeAsync(userId, data.ClientId, data.Scope);
+                return new OkObjectResult(mapping);
+            }
+            catch (Exception ex)
+            {
+                return new BadRequestObjectResult(ex.Message);
+            }
+        }
+
+        [Function("RemoveUserClientScope")]
+        public async Task<IActionResult> RemoveUserClientScope([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/manage/users/scopes/{id}")] HttpRequest req, string id)
+        {
+            var (principal, error) = AuthHelper.ValidateAdmin(req, _tokenService, _logger);
+            if (error != null) return error;
+
+            if (!Guid.TryParse(id, out Guid guidId)) return new BadRequestObjectResult("Invalid ID format");
+
+            var success = await _userScopeService.RemoveScopeAsync(guidId);
+            if (!success) return new NotFoundResult();
+
+            return new OkResult();
         }
 
         [Function("GetUsers")]

@@ -1,7 +1,7 @@
 export const OAUTH_CONFIG = {
-  authServer: 'http://localhost:7071', // ar-auth backend
-  authUi: 'http://localhost:5173',     // ar-auth frontend
+  authServer: 'http://localhost:7112', // Updated to match backend port and http
+  authUi: 'https://localhost:5173',     // ar-auth frontend
   clientId: 'test-client',
-  redirectUri: 'http://localhost:5174/callback',
+  redirectUri: 'https://localhost:5174/callback',
   scopes: 'openid profile email',
 };

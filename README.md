@@ -118,10 +118,10 @@ Construct the URL and redirect the user's browser.
 - `state`: Random string to prevent CSRF attacks. Verify this on callback.
 - `code_challenge`: The hashed string generated in Step 1.
 - `code_challenge_method`: Must be `S256`.
-- `scope`: E.g., `openid profile`.
+- `scope`: E.g., `openid profile`. For cross-app access, use `api://{target-client-id}/{scope}`.
 
-*Example URL*:
-`https://auth.adolfrey.com/api/authorize?client_id=my-app&redirect_uri=https://myapp.com/callback&response_type=code&state=xyz123&code_challenge=AbCdEf1234&code_challenge_method=S256&scope=openid%20profile`
+*Example URL with Cross-App Scope*:
+`https://auth.adolfrey.com/api/authorize?client_id=my-app&redirect_uri=https://myapp.com/callback&response_type=code&state=xyz123&code_challenge=AbCdEf1234&code_challenge_method=S256&scope=openid%20profile%20api://inventory-service/read:stock`
 
 ### Step 3: Handle the Callback
 The user will be redirected back to your `redirect_uri` with the parameters:
@@ -150,9 +150,55 @@ Make a `POST` request to the Token endpoint, passing the `code` and the original
   "refresh_token": "dj9a...",
   "token_type": "Bearer",
   "expires_in": 300,
-  "scope": "openid profile"
+  "scope": "openid profile api://inventory-service/read:stock"
 }
 ```
 
 ### Step 5: Validate and Use the Token
 The `access_token` is a Signed JWT. Use it in the `Authorization: Bearer <token>` header of subsequent API requests. The Backend will validate the signature against the public key found at `/.well-known/jwks.json`.
+
+---
+
+## 🌐 Cross-App Scopes & Trust
+
+AR Auth supports **Cross-App Trust**, allowing one application (App A) to request access to resources/scopes owned by another application (App B).
+
+### Qualified Scope Format
+Cross-app scopes must use the following URI format:
+`api://{target-client-id}/{scope-name}`
+
+*Example:* `api://inventory-service/read:stock`
+
+### Requirements for Access
+For a cross-app scope to be granted in an access token, the following conditions must be met:
+
+1.  **Trust Relationship:** An administrator must create a "Cross-App Trust" record in the Admin UI authorizing `App A` (Requesting Client) to request `read:stock` from `App B` (Target Client).
+2.  **User Authorization:** 
+    *   The user must have been manually assigned the `read:stock` scope for `App B`.
+    *   **OR**, the scope `read:stock` must be marked as **Admin Approved (Auto-grant)** for `App B`.
+
+### How to Request
+Add the qualified scope to your authorization request alongside standard OIDC scopes.
+
+#### Using OIDC Library
+```typescript
+const userManager = new UserManager({
+    // ... other config
+    scope: 'openid profile email api://inventory-service/read:stock'
+});
+```
+
+#### Manual Redirect
+`https://auth.adolfrey.com/api/authorize?client_id=my-app&...&scope=openid%20profile%20api://inventory-service/read:stock`
+
+### JWT Representation
+When granted, these scopes appear in the `scope` claim of the access token and are also mapped to the `role` claim to simplify integration with standard authorization middleware.
+
+```json
+{
+  "sub": "user_123",
+  "client_id": "my-app",
+  "scope": "openid profile api://inventory-service/read:stock",
+  "role": ["api://inventory-service/read:stock"]
+}
+```

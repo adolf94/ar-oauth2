@@ -1,6 +1,6 @@
-import { Box, Button, Typography, Paper, Stack, TextField, Autocomplete, Chip, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, Button, Typography, Paper, Stack, TextField, Autocomplete, Chip, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, Tabs, Tab } from '@mui/material';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
-import { Delete as DeleteIcon, Edit as EditIcon, Key as KeyIcon, Add as AddIcon } from '@mui/icons-material';
+import { Delete as DeleteIcon, Edit as EditIcon, Key as KeyIcon, Add as AddIcon, Public as PublicIcon, Lock as LockIcon, Shield as ShieldIcon, CheckCircle as CheckCircleIcon, Person as PersonIcon, Sync as SyncIcon } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import api from '../api';
 
@@ -9,7 +9,12 @@ interface AppModel {
   clientId: string;
   redirectUris: string[];
   allowedScopes: string[];
-  clientSecrets?: { id: string; createdAt: string; description: string }[];
+  clientSecrets?: any[];
+  roleCount?: number;
+  scopeCount?: number;
+  autoGrantCount?: number;
+  trustCount?: number;
+  applicationScopes?: { id: string; name: string; fullScopeName: string; description?: string }[];
 }
 
 export default function AdminApps() {
@@ -17,7 +22,7 @@ export default function AdminApps() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editingApp, setEditingApp] = useState<AppModel | null>(null);
-  const [newApp, setNewApp] = useState({ clientId: '', redirectUris: [] as string[], allowedScopes: ['openid', 'profile'] });
+  const [newApp, setNewApp] = useState({ clientId: '', redirectUris: [] as string[], allowedScopes: ['openid', 'profile'], isPublic: false });
   const [submitting, setSubmitting] = useState(false);
   const [generatedSecret, setGeneratedSecret] = useState<string | null>(null);
   const [showSecretDialog, setShowSecretDialog] = useState(false);
@@ -26,6 +31,23 @@ export default function AdminApps() {
   const [secretsDialogOpen, setSecretsDialogOpen] = useState(false);
   const [secretDescription, setSecretDescription] = useState('New Secret');
   const [addingSecret, setAddingSecret] = useState(false);
+
+  const [manageScopesApp, setManageScopesApp] = useState<AppModel | null>(null);
+  const [scopesDialogOpen, setScopesDialogOpen] = useState(false);
+  const [newScope, setNewScope] = useState({ name: '', description: '', isAdminApproved: false });
+  const [addingScope, setAddingScope] = useState(false);
+  const [appScopes, setAppScopes] = useState<any[]>([]);
+
+  const [appRoles, setAppRoles] = useState<any[]>([]);
+  const [newRole, setNewRole] = useState({ name: '', description: '' });
+  const [addingRole, setAddingRole] = useState(false);
+  
+  const [appTrusts, setAppTrusts] = useState<any[]>([]);
+  const [newTrust, setNewTrust] = useState({ targetClientId: '', scopeName: '' });
+  const [addingTrust, setAddingTrust] = useState(false);
+  const [targetAppScopes, setTargetAppScopes] = useState<any[]>([]);
+
+  const [activeTab, setActiveTab] = useState(0);
 
   const fetchApps = () => {
     setLoading(true);
@@ -46,7 +68,7 @@ export default function AdminApps() {
 
   const handleOpenCreate = () => {
     setEditingApp(null);
-    setNewApp({ clientId: '', redirectUris: [], allowedScopes: ['openid', 'profile'] });
+    setNewApp({ clientId: '', redirectUris: [], allowedScopes: ['openid', 'profile'], isPublic: false });
     setOpen(true);
   };
 
@@ -55,7 +77,8 @@ export default function AdminApps() {
     setNewApp({ 
       clientId: app.clientId, 
       redirectUris: [...(app.redirectUris || [])], 
-      allowedScopes: [...(app.allowedScopes || [])] 
+      allowedScopes: [...(app.allowedScopes || [])],
+      isPublic: !app.clientSecrets || app.clientSecrets.length === 0
     });
     setOpen(true);
   };
@@ -72,10 +95,13 @@ export default function AdminApps() {
         const response = await api.post('/manage/clients', {
           clientId: newApp.clientId,
           redirectUris: newApp.redirectUris,
-          allowedScopes: newApp.allowedScopes
+          allowedScopes: newApp.allowedScopes,
+          isPublic: newApp.isPublic
         });
-        setGeneratedSecret(response.data.plainSecret);
-        setShowSecretDialog(true);
+        if (response.data.plainSecret) {
+          setGeneratedSecret(response.data.plainSecret);
+          setShowSecretDialog(true);
+        }
       }
       setOpen(false);
       fetchApps();
@@ -119,6 +145,129 @@ export default function AdminApps() {
     } finally {
       setAddingSecret(false);
       setSecretDescription('New Secret');
+    }
+  };
+
+  const handleOpenScopes = async (app: AppModel) => {
+    setManageScopesApp(app);
+    setScopesDialogOpen(true);
+    setAppScopes([]);
+    setAppRoles([]);
+    setAppTrusts([]);
+    setActiveTab(0);
+    try {
+      const res = await api.get(`/manage/scopes?client_id=${app.clientId}`);
+      setAppScopes(res.data);
+      const rolesRes = await api.get(`/manage/roles?client_id=${app.clientId}`);
+      setAppRoles(rolesRes.data);
+      const trustRes = await api.get(`/manage/trusts?client_id=${app.clientId}`);
+      setAppTrusts(trustRes.data);
+    } catch (err) {
+      console.error('Error fetching capabilities:', err);
+    }
+  };
+
+  const handleTargetAppChange = async (clientId: string) => {
+    setNewTrust({ ...newTrust, targetClientId: clientId, scopeName: '' });
+    setTargetAppScopes([]);
+    if (clientId) {
+      try {
+        const res = await api.get(`/manage/scopes?client_id=${clientId}`);
+        setTargetAppScopes(res.data);
+      } catch (err) {
+        console.error('Error fetching target scopes', err);
+      }
+    }
+  };
+
+  const handleAddTrust = async () => {
+    if (!manageScopesApp) return;
+    setAddingTrust(true);
+    try {
+      await api.post('/manage/trusts', {
+        requestingClientId: manageScopesApp.clientId,
+        targetClientId: newTrust.targetClientId,
+        scopeName: newTrust.scopeName
+      });
+      setNewTrust({ targetClientId: '', scopeName: '' });
+      // Refresh
+      const res = await api.get(`/manage/trusts?client_id=${manageScopesApp.clientId}`);
+      setAppTrusts(res.data);
+    } catch (err: any) {
+      alert(err.response?.data || 'Failed to add trust');
+    } finally {
+      setAddingTrust(false);
+    }
+  };
+
+  const handleDeleteTrust = async (id: string) => {
+    if (!confirm('Delete this trust relationship?')) return;
+    try {
+      await api.delete(`/manage/trusts/${id}?client_id=${manageScopesApp?.clientId}`);
+      setAppTrusts(appTrusts.filter(t => t.id !== id));
+    } catch (err) {
+      alert('Failed to delete trust');
+    }
+  };
+
+  const handleAddRole = async () => {
+    if (!manageScopesApp) return;
+    setAddingRole(true);
+    try {
+      await api.post('/manage/roles', {
+        clientId: manageScopesApp.clientId,
+        name: newRole.name,
+        description: newRole.description
+      });
+      setNewRole({ name: '', description: '' });
+      // Refresh
+      const res = await api.get(`/manage/roles?client_id=${manageScopesApp.clientId}`);
+      setAppRoles(res.data);
+    } catch (err: any) {
+      alert(err.response?.data || 'Failed to add role');
+    } finally {
+      setAddingRole(false);
+    }
+  };
+
+  const handleDeleteRole = async (id: string) => {
+    if (!confirm('Delete this role?')) return;
+    try {
+      await api.delete(`/manage/roles/${id}?client_id=${manageScopesApp?.clientId}`);
+      setAppRoles(appRoles.filter(r => r.id !== id));
+    } catch (err) {
+      alert('Failed to delete role');
+    }
+  };
+
+  const handleAddScope = async () => {
+    if (!manageScopesApp) return;
+    setAddingScope(true);
+    try {
+      await api.post('/manage/scopes', {
+        clientId: manageScopesApp.clientId,
+        name: newScope.name,
+        description: newScope.description,
+        isAdminApproved: newScope.isAdminApproved
+      });
+      setNewScope({ name: '', description: '', isAdminApproved: false });
+      // Refresh
+      const res = await api.get(`/manage/scopes?client_id=${manageScopesApp.clientId}`);
+      setAppScopes(res.data);
+    } catch (err: any) {
+      alert(err.response?.data || 'Failed to add scope');
+    } finally {
+      setAddingScope(false);
+    }
+  };
+
+  const handleDeleteScope = async (id: string) => {
+    if (!confirm('Delete this scope?')) return;
+    try {
+      await api.delete(`/manage/scopes/${id}`);
+      setAppScopes(appScopes.filter(s => s.id !== id));
+    } catch (err) {
+      alert('Failed to delete scope');
     }
   };
 
@@ -195,10 +344,29 @@ export default function AdminApps() {
                   variant="outlined"
                   label="Redirect URIs"
                   placeholder="Type URI and press Enter"
-                  helperText="Enter all valid callback URLs for this application"
                 />
               )}
             />
+
+            {!editingApp && (
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={newApp.isPublic} 
+                    onChange={(e) => setNewApp({ ...newApp, isPublic: e.target.checked })} 
+                    color="primary"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body1">Public Application</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      For SPAs or Mobile Apps. No client secret required, uses PKCE.
+                    </Typography>
+                  </Box>
+                }
+              />
+            )}
 
             <Autocomplete
               multiple
@@ -348,6 +516,7 @@ export default function AdminApps() {
               <TableRow>
                 <TableCell><strong>Client ID</strong></TableCell>
                 <TableCell><strong>Configuration</strong></TableCell>
+                <TableCell><strong>Capabilities</strong></TableCell>
                 <TableCell align="right"><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
@@ -355,8 +524,17 @@ export default function AdminApps() {
               {apps.map((row) => (
                 <TableRow key={row.clientId} sx={{ '&:hover': { bgcolor: 'action.selected' } }}>
                   <TableCell component="th" scope="row">
-                    <Typography variant="subtitle1" fontWeight="bold" color="primary">
+                    <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {row.clientId}
+                      {(!row.clientSecrets || row.clientSecrets.length === 0) ? (
+                        <Tooltip title="Public Client (PKCE)">
+                          <PublicIcon sx={{ fontSize: 16, color: 'info.main' }} />
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title="Confidential Client (Secret)">
+                          <LockIcon sx={{ fontSize: 16, color: 'warning.main' }} />
+                        </Tooltip>
+                      )}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {row.clientSecrets?.length || 0} active secrets
@@ -374,8 +552,40 @@ export default function AdminApps() {
                       ))}
                     </Box>
                   </TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                      {row.roleCount !== undefined && row.roleCount > 0 && (
+                        <Tooltip title="Defined Application Roles">
+                          <Chip size="small" label={`${row.roleCount} Roles`} color="info" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                        </Tooltip>
+                      )}
+                      {row.scopeCount !== undefined && row.scopeCount > 0 && (
+                        <Tooltip title="Custom API Scopes">
+                          <Chip size="small" label={`${row.scopeCount} Scopes`} color="secondary" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                        </Tooltip>
+                      )}
+                      {row.autoGrantCount !== undefined && row.autoGrantCount > 0 && (
+                        <Tooltip title="Admin Approved (Auto-granted)">
+                          <Chip size="small" label={`${row.autoGrantCount} Auto`} color="success" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                        </Tooltip>
+                      )}
+                      {row.trustCount !== undefined && row.trustCount > 0 && (
+                        <Tooltip title="Cross-App trust permissions">
+                          <Chip size="small" label={`${row.trustCount} Trusts`} color="primary" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} icon={<SyncIcon sx={{ fontSize: '10px !important' }} />} />
+                        </Tooltip>
+                      )}
+                      {(!row.roleCount && !row.scopeCount && !row.trustCount) && (
+                        <Typography variant="caption" color="text.disabled">None</Typography>
+                      )}
+                    </Stack>
+                  </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Tooltip title="Manage Scopes">
+                        <IconButton size="small" color="info" onClick={() => handleOpenScopes(row)}>
+                          <ShieldIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Manage Secrets">
                         <IconButton size="small" color="secondary" onClick={() => handleOpenSecrets(row)}>
                           <KeyIcon fontSize="small" />
@@ -406,6 +616,249 @@ export default function AdminApps() {
           </Table>
         </TableContainer>
       )}
+
+      {/* Scopes Dialog */}
+      <Dialog open={scopesDialogOpen} onClose={() => setScopesDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 'bold' }}>
+          App Capabilities: {manageScopesApp?.clientId}
+        </DialogTitle>
+        <DialogContent>
+          <Tabs value={activeTab} onChange={(_, val) => setActiveTab(val)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tab label="OIDC Scopes" />
+            <Tab label="Application Roles" />
+            <Tab label="Cross-App Permissions" />
+          </Tabs>
+
+          {activeTab === 0 && (
+            <Box>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Define custom API scopes for this application. These can be requested using <code>api://{manageScopesApp?.clientId}/[scope-name]</code>
+              </Typography>
+              
+              <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Scope Name</strong></TableCell>
+                      <TableCell><strong>Full Identifier</strong></TableCell>
+                      <TableCell><strong>Type</strong></TableCell>
+                      <TableCell><strong>Description</strong></TableCell>
+                      <TableCell align="right"><strong>Actions</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {appScopes.map((scope) => (
+                      <TableRow key={scope.id}>
+                        <TableCell><code>{scope.name}</code></TableCell>
+                        <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{scope.fullScopeName}</Typography></TableCell>
+                        <TableCell>
+                          {scope.isAdminApproved ? (
+                            <Chip size="small" label="Auto-grant" color="success" icon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />} />
+                          ) : (
+                            <Chip size="small" label="Manual" variant="outlined" icon={<PersonIcon sx={{ fontSize: '14px !important' }} />} />
+                          )}
+                        </TableCell>
+                        <TableCell>{scope.description}</TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" color="error" onClick={() => handleDeleteScope(scope.id)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {appScopes.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} align="center" sx={{ py: 3 }}>No custom scopes defined.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Box sx={{ mt: 4, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                <Typography variant="subtitle2" gutterBottom fontWeight="bold">Add Custom Scope</Typography>
+                <Stack spacing={2}>
+                  <TextField 
+                    size="small" 
+                    fullWidth 
+                    label="Scope Name" 
+                    value={newScope.name}
+                    onChange={(e) => setNewScope({ ...newScope, name: e.target.value })}
+                    placeholder="e.g. read:profile, write:data"
+                  />
+                  <TextField 
+                    size="small" 
+                    fullWidth 
+                    label="Description" 
+                    value={newScope.description}
+                    onChange={(e) => setNewScope({ ...newScope, description: e.target.value })}
+                    placeholder="Optional description"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch 
+                        checked={newScope.isAdminApproved} 
+                        onChange={(e) => setNewScope({ ...newScope, isAdminApproved: e.target.checked })} 
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body2">Admin Approved (Auto-grant)</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          If enabled, this scope is automatically given to ALL users of this application.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  <Button 
+                    variant="contained" 
+                    onClick={handleAddScope}
+                    disabled={addingScope || !newScope.name}
+                  >
+                    {addingScope ? <CircularProgress size={24} /> : "Add Scope"}
+                  </Button>
+                </Stack>
+              </Box>
+            </Box>
+          )}
+
+          {activeTab === 1 && (
+            <Box>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Define discrete Roles available for this specific application (e.g., 'Admin', 'Editor', 'Viewer').
+              </Typography>
+              
+              <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Role Name</strong></TableCell>
+                      <TableCell><strong>Description</strong></TableCell>
+                      <TableCell align="right"><strong>Actions</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {appRoles.map((role) => (
+                      <TableRow key={role.id}>
+                        <TableCell><code>{role.name}</code></TableCell>
+                        <TableCell>{role.description}</TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" color="error" onClick={() => handleDeleteRole(role.id)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {appRoles.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3 }}>No roles defined for this app.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Box sx={{ mt: 4, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                <Typography variant="subtitle2" gutterBottom fontWeight="bold">Define New Role</Typography>
+                <Stack spacing={2}>
+                  <TextField 
+                    size="small" 
+                    fullWidth 
+                    label="Role Name" 
+                    value={newRole.name}
+                    onChange={(e) => setNewRole({ ...newRole, name: e.target.value })}
+                    placeholder="e.g. Admin, Editor"
+                  />
+                  <TextField 
+                    size="small" 
+                    fullWidth 
+                    label="Description" 
+                    value={newRole.description}
+                    onChange={(e) => setNewRole({ ...newRole, description: e.target.value })}
+                  />
+                  <Button 
+                    variant="contained" 
+                    onClick={handleAddRole}
+                    disabled={addingRole || !newRole.name}
+                  >
+                    {addingRole ? <CircularProgress size={24} /> : "Define Role"}
+                  </Button>
+                </Stack>
+              </Box>
+            </Box>
+          )}
+
+          {activeTab === 2 && (
+            <Box>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Authorize this application to request specific scopes belonging to OTHER applications.
+              </Typography>
+              
+              <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Target Application</strong></TableCell>
+                      <TableCell><strong>Authorized Scope</strong></TableCell>
+                      <TableCell align="right"><strong>Actions</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {appTrusts.map((trust) => (
+                      <TableRow key={trust.id}>
+                        <TableCell><Chip size="small" label={trust.targetClientId} icon={<SyncIcon sx={{ fontSize: '14px !important' }} />} /></TableCell>
+                        <TableCell><code>api://{trust.targetClientId}/{trust.scopeName}</code></TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" color="error" onClick={() => handleDeleteTrust(trust.id)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {appTrusts.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3 }}>No cross-app permissions defined.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Box sx={{ mt: 4, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                <Typography variant="subtitle2" gutterBottom fontWeight="bold">Authorize New Permission</Typography>
+                <Stack direction="row" spacing={2} alignItems="flex-start">
+                  <Autocomplete
+                    size="small"
+                    sx={{ minWidth: 200 }}
+                    options={apps.filter(a => a.clientId !== manageScopesApp?.clientId).map(a => a.clientId)}
+                    value={newTrust.targetClientId}
+                    onChange={(_, val) => handleTargetAppChange(val || '')}
+                    renderInput={(params) => <TextField {...params} label="Target Client" />}
+                  />
+                  <Autocomplete
+                    size="small"
+                    fullWidth
+                    options={targetAppScopes.map(s => s.name)}
+                    value={newTrust.scopeName}
+                    onChange={(_, val) => setNewTrust({ ...newTrust, scopeName: val || '' })}
+                    renderInput={(params) => <TextField {...params} label="Target Scope" placeholder="Select scope..." />}
+                  />
+                  <Button 
+                    variant="contained" 
+                    onClick={handleAddTrust}
+                    disabled={addingTrust || !newTrust.targetClientId || !newTrust.scopeName}
+                  >
+                    {addingTrust ? <CircularProgress size={24} /> : "Authorize"}
+                  </Button>
+                </Stack>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={() => setScopesDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

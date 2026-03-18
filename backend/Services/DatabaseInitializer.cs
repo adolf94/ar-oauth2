@@ -26,47 +26,6 @@ namespace backend.Services
 
             try
             {
-                // Ensure the system client exists
-                var systemClientId = "ar-auth-system";
-                var systemClient = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == systemClientId);
-
-                if (systemClient == null)
-                {
-                    _logger.LogInformation("Seeding system client: {ClientId}", systemClientId);
-                    
-                    systemClient = new Client
-                    {
-                        Id = Guid.NewGuid(),
-                        ClientId = systemClientId,
-                        ClientSecrets = new List<ClientSecret>(), // Public client: no secrets
-                        RedirectUris = new List<string> { 
-                            "http://localhost:5173/auth/callback",
-                            "http://localhost:5173/auth/popup-callback",
-                            "http://localhost:5173/" 
-                        },
-                        AllowedScopes = new List<string> { "openid", "profile", "admin", "manage" }
-                    };
-
-                    _dbContext.Clients.Add(systemClient);
-                }
-                else
-                {
-                    // Ensure it stays a public client
-                    if (systemClient.ClientSecrets != null && systemClient.ClientSecrets.Any())
-                    {
-                        _logger.LogInformation("Converting {ClientId} to a public client (removing secrets).", systemClientId);
-                        systemClient.ClientSecrets.Clear();
-                    }
-                    if (!systemClient.RedirectUris.Contains("http://localhost:5173/auth/callback"))
-                    {
-                        systemClient.RedirectUris.Add("http://localhost:5173/auth/callback");
-                    }
-                    if (!systemClient.RedirectUris.Contains("http://localhost:5173/auth/popup-callback"))
-                    {
-                        systemClient.RedirectUris.Add("http://localhost:5173/auth/popup-callback");
-                    }
-                }
-
                 // Ensure the management client exists
                 var managementClientId = "ar-auth-management";
                 var managementClient = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == managementClientId);
@@ -74,29 +33,92 @@ namespace backend.Services
                 if (managementClient == null)
                 {
                     _logger.LogInformation("Seeding management client: {ClientId}", managementClientId);
-                    
+
                     managementClient = new Client
                     {
                         Id = Guid.NewGuid(),
                         ClientId = managementClientId,
                         ClientSecrets = new List<ClientSecret>(), // Public client
-                        RedirectUris = new List<string> { 
+                        RedirectUris = new List<string> {
                             "https://auth.adolfrey.com/auth/callback",
-                            "http://localhost:5174/auth/callback", // Assuming localhost:5174 for second app dev
-                            "http://localhost:5174/" 
+                            "https://localhost:5174/auth/callback", // Assuming localhost:5174 for second app dev
+                            "https://localhost:5174/"
                         },
                         AllowedScopes = new List<string> { "openid", "profile", "admin", "manage" }
                     };
 
                     _dbContext.Clients.Add(managementClient);
                 }
-                else
+                if (!managementClient.RedirectUris.Contains("https://auth.adolfrey.com/auth/callback"))
                 {
-                    if (!managementClient.RedirectUris.Contains("https://auth.adolfrey.com/auth/callback"))
-                    {
-                        managementClient.RedirectUris.Add("https://auth.adolfrey.com/auth/callback");
-                    }
+                    managementClient.RedirectUris.Add("https://auth.adolfrey.com/auth/callback");
                 }
+
+                // --- Ar-Go Implementation ---
+                var arGoWebId = "ar-go-web";
+                var arGoApiId = "ar-go-api";
+
+                // 1. Ensure Ar-Go Web Client exists
+                var arGoWeb = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == arGoWebId);
+                if (arGoWeb == null)
+                {
+                    _logger.LogInformation("Seeding Ar-Go Web client: {ClientId}", arGoWebId);
+                    arGoWeb = new Client
+                    {
+                        ClientId = arGoWebId,
+                        RedirectUris = new List<string> {
+                            "https://localhost:5174/auth/callback",
+                            "https://localhost:5174/",
+                            "https://argo.adolfrey.com/auth/callback"
+                        },
+                        AllowedScopes = new List<string> { "openid", "profile", "email", "offline_access", $"api://{arGoApiId}/user" }
+                    };
+                    _dbContext.Clients.Add(arGoWeb);
+                }
+
+                // 2. Ensure Ar-Go API Client exists (as a resource)
+                var arGoApi = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == arGoApiId);
+                if (arGoApi == null)
+                {
+                    _logger.LogInformation("Seeding Ar-Go API client: {ClientId}", arGoApiId);
+                    arGoApi = new Client
+                    {
+                        ClientId = arGoApiId,
+                        AllowedScopes = new List<string> { "openid" }
+                    };
+                    _dbContext.Clients.Add(arGoApi);
+                }
+
+                // 3. Ensure "user" scope exists for Ar-Go API
+                var userScope = await _dbContext.ApplicationScopes.FirstOrDefaultAsync(s => s.ClientId == arGoApiId && s.Name == "user");
+                if (userScope == null)
+                {
+                    _logger.LogInformation("Seeding 'user' scope for Ar-Go API");
+                    userScope = new ApplicationScope
+                    {
+                        ClientId = arGoApiId,
+                        Name = "user",
+                        Description = "Access to user-specific Ar-Go data",
+                        IsAdminApproved = true // Auto-grant to everyone for now
+                    };
+                    _dbContext.ApplicationScopes.Add(userScope);
+                }
+
+                // 4. Ensure Cross-App Trust exists: ar-go-web -> ar-go-api / user
+                var trust = await _dbContext.CrossAppTrusts.FirstOrDefaultAsync(t => t.RequestingClientId == arGoWebId && t.TargetClientId == arGoApiId && t.ScopeName == "user");
+                if (trust == null)
+                {
+                    _logger.LogInformation("Seeding Cross-App Trust: {Requesting} -> {Target} / {Scope}", arGoWebId, arGoApiId, "user");
+                    trust = new CrossAppTrust
+                    {
+                        RequestingClientId = arGoWebId,
+                        TargetClientId = arGoApiId,
+                        ScopeName = "user",
+                        IsApproved = true
+                    };
+                    _dbContext.CrossAppTrusts.Add(trust);
+                }
+
 
                 await _dbContext.SaveChangesAsync();
                 _logger.LogInformation("Database initialization complete.");

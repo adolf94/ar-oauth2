@@ -57,6 +57,10 @@ var host = new HostBuilder()
         services.AddScoped<ClientService>();
         services.AddScoped<AuthCodeService>();
         services.AddScoped<TokenService>();
+        services.AddScoped<ApplicationScopeService>();
+        services.AddScoped<RoleDefinitionService>();
+        services.AddScoped<UserClientScopeService>();
+        services.AddScoped<CrossAppTrustService>();
         services.AddScoped<DatabaseInitializer>();
 
         services.AddPasswordlessSdk(options =>
@@ -74,7 +78,7 @@ var host = new HostBuilder()
         {
             options.AddDefaultPolicy(policy =>
             {
-                policy.WithOrigins("https://id.adolfrey.com", "http://localhost:5174")
+                policy.WithOrigins("https://id.adolfrey.com", "https://localhost:5174")
                       .AllowAnyHeader()
                       .AllowAnyMethod()
                       .AllowCredentials();

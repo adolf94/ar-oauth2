@@ -50,6 +50,10 @@ namespace backend.Endpoints
                 !client.RedirectUris.Contains(request.redirect_uri))
                 return RedirectToError("invalid_request", "redirect_uri is not registered for this client.");
 
+            // 3. Enforce PKCE for public clients
+            if ((client.ClientSecrets == null || !client.ClientSecrets.Any()) && string.IsNullOrEmpty(request.code_challenge))
+                return RedirectToError("invalid_request", "PKCE (code_challenge) is required for public clients.");
+
             // 3. Redirect to the local SPA login page, forwarding all PKCE params
             var loginUrl = $"/login" +
                            $"?client_id={Uri.EscapeDataString(request.client_id)}" +

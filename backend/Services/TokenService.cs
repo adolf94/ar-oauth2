@@ -30,9 +30,70 @@ namespace backend.Services
 
         // ── Access Token ────────────────────────────────────────────
 
-        public string GenerateAccessToken(User user, Client client, string scopes)
+        public async Task<(string Token, string Scopes)> GenerateAccessToken(User user, Client client, string scopes)
         {
             var key = _rsaKeyService.GetSigningKey();
+
+            var finalScopesList = scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+            
+            // 1. Resolve and Validate Cross-App Scopes
+            var qualifiedScopes = finalScopesList.Where(s => s.StartsWith("api://")).ToList();
+            var validatedCrossScopes = new List<string>();
+
+            if (qualifiedScopes.Any())
+            {
+                var trusts = await _dbContext.CrossAppTrusts
+                    .Where(t => t.RequestingClientId == client.ClientId && t.IsApproved)
+                    .ToListAsync();
+
+                foreach (var qs in qualifiedScopes)
+                {
+                    // Find if current client is trusted to request this specific scope
+                    var trust = trusts.FirstOrDefault(t => t.Matches(qs));
+                    if (trust != null)
+                    {
+                        // Now check if USER has this scope assigned for the TargetClient (or if it is AdminApproved for TargetClient)
+                        var isUserAuthorized = await _dbContext.UserClientScopes
+                            .Where(ucs => ucs.UserId == user.Id && ucs.ClientId == trust.TargetClientId && ucs.Scope == trust.ScopeName)
+                            .FirstOrDefaultAsync() != null;
+                        
+                        if (!isUserAuthorized)
+                        {
+                            isUserAuthorized = await _dbContext.ApplicationScopes
+                                .Where(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsAdminApproved)
+                                .FirstOrDefaultAsync() != null;
+                        }
+
+                        // Admin Bypass: If user is a global admin, they are authorized for any trusted cross-app scope
+                        if (!isUserAuthorized && user.Roles.Contains("admin"))
+                        {
+                            isUserAuthorized = true;
+                        }
+
+                        if (isUserAuthorized)
+                        {
+                            validatedCrossScopes.Add(qs);
+                        }
+                    }
+                }
+            }
+
+            // Remove all qualified scopes that weren't validated
+            finalScopesList.RemoveAll(s => s.StartsWith("api://") && !validatedCrossScopes.Contains(s));
+
+            // 2. Fetch Admin Approved (Auto-granted) scopes for the Requesting Client
+            var autoGrantedScopes = await _dbContext.ApplicationScopes
+                .Where(s => s.ClientId == client.ClientId && s.IsAdminApproved)
+                .Select(s => s.FullScopeName)
+                .ToListAsync();
+
+            foreach (var s in autoGrantedScopes)
+            {
+                if (!finalScopesList.Contains(s))
+                    finalScopesList.Add(s);
+            }
+
+            var finalScopesString = string.Join(' ', finalScopesList.Distinct());
 
             var claims = new List<Claim>
             {
@@ -40,23 +101,60 @@ namespace backend.Services
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
                 new Claim("client_id", client.ClientId),
-                new Claim("scope",     scopes)
+                new Claim("scope",     finalScopesString)
             };
 
+            // 1. Global Roles
             foreach (var role in user.Roles)
                 claims.Add(new Claim(ClaimTypes.Role, role));
+
+            // 2. App-Specific Scopes (Manual Assignments for current app)
+            var appSpecificScopes = await _dbContext.UserClientScopes
+                .Where(ucs => ucs.UserId == user.Id && ucs.ClientId == client.ClientId)
+                .Select(ucs => ucs.Scope)
+                .ToListAsync();
+
+            foreach (var scope in appSpecificScopes)
+                claims.Add(new Claim(ClaimTypes.Role, scope));
+
+            // 3. App-Specific Scopes (Auto-granted for current app)
+            foreach (var scope in autoGrantedScopes)
+            {
+                if (!claims.Any(c => c.Type == ClaimTypes.Role && c.Value == scope))
+                    claims.Add(new Claim(ClaimTypes.Role, scope));
+            }
+
+            // 4. Validated Cross-App Scopes as Roles
+            foreach (var scope in validatedCrossScopes)
+            {
+                if (!claims.Any(c => c.Type == ClaimTypes.Role && c.Value == scope))
+                    claims.Add(new Claim(ClaimTypes.Role, scope));
+            }
+
+            // 5. Build Audiences list (Requesting Client + Target Clients for cross-app scopes)
+            var audiences = new List<string> { client.ClientId };
+            foreach (var vs in validatedCrossScopes)
+            {
+                var targetId = vs.Substring(6).Split('/')[0];
+                if (!audiences.Contains(targetId))
+                    audiences.Add(targetId);
+            }
+
+            foreach (var aud in audiences)
+            {
+                claims.Add(new Claim(JwtRegisteredClaimNames.Aud, aud));
+            }
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.UtcNow.AddMinutes(5),
                 Issuer = Issuer,
-                Audience = client.ClientId,
                 SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
             };
 
             var handler = new JwtSecurityTokenHandler();
-            return handler.WriteToken(handler.CreateToken(tokenDescriptor));
+            return (handler.WriteToken(handler.CreateToken(tokenDescriptor)), finalScopesString);
         }
 
         public ClaimsPrincipal? ValidateAccessToken(string jwt, string? audience = null)
@@ -88,13 +186,14 @@ namespace backend.Services
 
         // ── Refresh Token ───────────────────────────────────────────
 
-        public async Task<string> GenerateRefreshTokenAsync(string userId, string clientId)
+        public async Task<string> GenerateRefreshTokenAsync(string userId, string clientId, string scopes)
         {
             var token = new Token
             {
                 Id = Guid.NewGuid().ToString().Replace("-", ""),
                 UserId = userId,
                 ClientId = clientId,
+                Scopes = scopes,
                 ExpiresAt = DateTime.UtcNow.AddDays(30)
             };
 
@@ -120,8 +219,8 @@ namespace backend.Services
             // Remove the old token (one-time use)
             _dbContext.Tokens.Remove(oldToken);
 
-            // Generate a fresh one
-            return await GenerateRefreshTokenAsync(oldToken.UserId, oldToken.ClientId);
+            // Generate a fresh one, preserving scopes
+            return await GenerateRefreshTokenAsync(oldToken.UserId, oldToken.ClientId, oldToken.Scopes);
         }
 
         // ── ID Token ────────────────────────────────────────────────

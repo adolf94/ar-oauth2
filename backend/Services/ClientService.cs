@@ -50,6 +50,21 @@ namespace backend.Services
             return (newClient, plainSecret);
         }
 
+        public async Task<Client> CreatePublicClientAsync(string clientId, List<string> redirectUris, List<string> allowedScopes)
+        {
+            var newClient = new Client
+            {
+                ClientId = clientId,
+                RedirectUris = redirectUris,
+                AllowedScopes = allowedScopes,
+                ClientSecrets = new List<ClientSecret>() // No secrets
+            };
+
+            _dbContext.Clients.Add(newClient);
+            await _dbContext.SaveChangesAsync();
+            return newClient;
+        }
+
         public async Task<string> AddSecretAsync(Guid id, string description)
         {
             var client = await _dbContext.Clients.FindAsync(id);

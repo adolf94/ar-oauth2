@@ -1,7 +1,7 @@
 import { Box, Button, Typography, Paper, Chip, Stack, TextField, Autocomplete, IconButton, Tooltip } from '@mui/material';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import { CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment } from '@mui/material';
-import { Person as PersonIcon, Phone as PhoneIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Person as PersonIcon, Phone as PhoneIcon, Edit as EditIcon, Delete as DeleteIcon, Shield as ShieldIcon, LockOpen as LockOpenIcon, Sync as SyncIcon, Info as InfoIcon } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import api from '../api';
 
@@ -19,6 +19,15 @@ export default function AdminUsers() {
   const [editingUser, setEditingUser] = useState<UserModel | null>(null);
   const [newUser, setNewUser] = useState({ email: '', mobileNumber: '', roles: ['user'] });
   const [submitting, setSubmitting] = useState(false);
+
+  // App-specific scopes state
+  const [scopesDialogOpen, setScopesDialogOpen] = useState(false);
+  const [manageScopesUser, setManageScopesUser] = useState<UserModel | null>(null);
+  const [userScopes, setUserScopes] = useState<any[]>([]);
+  const [apps, setApps] = useState<any[]>([]);
+  const [availableOptions, setAvailableOptions] = useState<string[]>([]);
+  const [newAppScope, setNewAppScope] = useState({ clientId: '', scope: '' });
+  const [addingScope, setAddingScope] = useState(false);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -87,6 +96,79 @@ export default function AdminUsers() {
       fetchUsers();
     } catch (err) {
       console.error('Delete error', err);
+    }
+  };
+
+  const handleOpenScopes = async (user: UserModel) => {
+    setManageScopesUser(user);
+    setScopesDialogOpen(true);
+    setUserScopes([]);
+    setNewAppScope({ clientId: '', scope: '' });
+    
+    try {
+      // Fetch users assigned scopes
+      const scopesRes = await api.get(`/manage/users/${user.id}/scopes`);
+      setUserScopes(scopesRes.data);
+      setAvailableOptions([]);
+
+      // Fetch all apps if not already fetched
+      if (apps.length === 0) {
+        const appsRes = await api.get('/manage/clients');
+        setApps(appsRes.data);
+      }
+    } catch (err) {
+      console.error('Error fetching scope data:', err);
+    }
+  };
+
+  const handleClientChange = async (clientId: string) => {
+    setNewAppScope({ ...newAppScope, clientId, scope: '' });
+    setAvailableOptions([]);
+    if (clientId) {
+      try {
+        const [rolesRes, scopesRes] = await Promise.all([
+          api.get(`/manage/roles?client_id=${clientId}`),
+          api.get(`/manage/scopes?client_id=${clientId}`)
+        ]);
+        
+        const roles = rolesRes.data.map((r: any) => r.name);
+        const scopes = scopesRes.data.map((s: any) => s.name);
+        
+        // Combine and unique
+        const combined = Array.from(new Set([...roles, ...scopes]));
+        setAvailableOptions(combined);
+      } catch (err) {
+        console.error('Error fetching capabilities for client', err);
+      }
+    }
+  };
+
+  const handleAddScope = async () => {
+    if (!manageScopesUser || !newAppScope.clientId || !newAppScope.scope) return;
+    setAddingScope(true);
+    try {
+      await api.post(`/manage/users/${manageScopesUser.id}/scopes`, {
+        clientId: newAppScope.clientId,
+        scope: newAppScope.scope
+      });
+      setNewAppScope({ ...newAppScope, scope: '' });
+      // Refresh
+      const res = await api.get(`/manage/users/${manageScopesUser.id}/scopes`);
+      setUserScopes(res.data);
+    } catch (err: any) {
+      alert(err.response?.data || 'Failed to assign scope');
+    } finally {
+      setAddingScope(false);
+    }
+  };
+
+  const handleRemoveScope = async (id: string) => {
+    if (!confirm('Remove this scope assignment?')) return;
+    try {
+      await api.delete(`/manage/users/scopes/${id}`);
+      setUserScopes(userScopes.filter(s => s.id !== id));
+    } catch (err) {
+      alert('Failed to remove scope');
     }
   };
 
@@ -206,6 +288,11 @@ export default function AdminUsers() {
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Tooltip title="Manage App Scopes">
+                        <IconButton size="small" color="info" onClick={() => handleOpenScopes(row)}>
+                          <ShieldIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Edit User">
                         <IconButton size="small" color="primary" onClick={() => handleOpenEdit(row)}>
                           <EditIcon fontSize="small" />
@@ -229,6 +316,106 @@ export default function AdminUsers() {
           </Table>
         </TableContainer>
       )}
+
+      {/* App-Specific Scopes Dialog */}
+      <Dialog open={scopesDialogOpen} onClose={() => setScopesDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 'bold' }}>
+          App-Specific Scopes: {manageScopesUser?.email}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Grant specific scopes/roles to this user for specific applications. These will be included in tokens for those apps.
+          </Typography>
+
+          <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Application</strong></TableCell>
+                  <TableCell><strong>Scope / Role</strong></TableCell>
+                  <TableCell align="right"><strong>Actions</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {userScopes.map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell><Chip label={s.clientId} size="small" icon={<LockOpenIcon sx={{ fontSize: '14px !important' }} />} /></TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <code>{s.scope}</code>
+                        {s.scope.startsWith('api://') && (
+                          <Tooltip title="Cross-App Trusted Scope">
+                            <SyncIcon color="primary" sx={{ fontSize: 16 }} />
+                          </Tooltip>
+                        )}
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" color="error" onClick={() => handleRemoveScope(s.id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {userScopes.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} align="center" sx={{ py: 3 }}>No app-specific scopes assigned.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Box sx={{ mt: 4, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+            <Typography variant="subtitle2" gutterBottom fontWeight="bold">Assign New Scope</Typography>
+            <Stack direction="row" spacing={2} alignItems="flex-start">
+              <Autocomplete
+                size="small"
+                sx={{ minWidth: 200 }}
+                options={apps.map(a => a.clientId)}
+                value={newAppScope.clientId}
+                onChange={(_, val) => handleClientChange(val || '')}
+                renderInput={(params) => <TextField {...params} label="Select Client" />}
+              />
+              <Autocomplete
+                size="small"
+                fullWidth
+                options={availableOptions}
+                value={newAppScope.scope}
+                onChange={(_, val) => setNewAppScope({ ...newAppScope, scope: val || '' })}
+                renderInput={(params) => (
+                  <TextField 
+                    {...params} 
+                    label="Role / Scope" 
+                    placeholder="Select role or scope..."
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {params.InputProps.endAdornment}
+                          <Tooltip title="Qualified scopes (api://client/scope) require Cross-App Trust to be configured for the client.">
+                            <InfoIcon color="action" sx={{ fontSize: 18, mr: 1, cursor: 'help' }} />
+                          </Tooltip>
+                        </>
+                      )
+                    }}
+                  />
+                )}
+              />
+              <Button 
+                variant="contained" 
+                onClick={handleAddScope}
+                disabled={addingScope || !newAppScope.clientId || !newAppScope.scope}
+              >
+                {addingScope ? <CircularProgress size={24} /> : "Assign"}
+              </Button>
+            </Stack>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={() => setScopesDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

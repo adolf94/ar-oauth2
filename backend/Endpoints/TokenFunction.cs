@@ -80,25 +80,41 @@ namespace backend.Endpoints
                     return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "User or client not found." });
 
                 // Multi-tier Client Secret Validation:
-                // If client has secrets registered in DB, the provided secret MUST match one of them.
                 if (client.ClientSecrets != null && client.ClientSecrets.Any())
                 {
+                    // Confidential Client: MUST provide a valid secret
                     if (string.IsNullOrEmpty(tokenReq.client_secret) || !_clientService.VerifyClientSecret(tokenReq.client_secret, client.ClientSecrets))
                     {
                         return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed." });
                     }
                 }
+                else
+                {
+                    // Public Client: MUST use PKCE
+                    _logger.LogInformation("Client {ClientId} is public; requiring PKCE validation.", client.ClientId);
+                    if (string.IsNullOrEmpty(validCode.CodeChallenge))
+                    {
+                        return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Public clients must use PKCE." });
+                    }
+                }
 
-                var accessToken  = _tokenService.GenerateAccessToken(user, client, validCode.Scopes);
-                var refreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id, client.ClientId);
+                var (accessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, validCode.Scopes);
+                var refreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id, client.ClientId, grantedScopes);
+                
+                string? idToken = null;
+                if (validCode.Scopes.Contains("openid"))
+                {
+                   idToken = _tokenService.GenerateIdToken(user, client);
+                }
 
                 return new OkObjectResult(new TokenResponse
                 {
                     AccessToken  = accessToken,
+                    IdToken      = idToken,
                     ExpiresIn    = 300,
                     RefreshToken = refreshToken,
                     TokenType    = "Bearer",
-                    Scope        = validCode.Scopes
+                    Scope        = grantedScopes
                 });
             }
 
@@ -131,7 +147,7 @@ namespace backend.Endpoints
                     _logger.LogInformation("Client {ClientId} is public; skipping secret validation for refresh_token.", client.ClientId);
                 }
 
-                var newAccessToken  = _tokenService.GenerateAccessToken(user, client, string.Empty);
+                var (newAccessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, storedToken.Scopes);
                 var newRefreshToken = await _tokenService.RotateRefreshTokenAsync(storedToken);
 
                 return new OkObjectResult(new TokenResponse
@@ -139,7 +155,8 @@ namespace backend.Endpoints
                     AccessToken  = newAccessToken,
                     ExpiresIn    = 300,
                     RefreshToken = newRefreshToken,
-                    TokenType    = "Bearer"
+                    TokenType    = "Bearer",
+                    Scope        = grantedScopes
                 });
             }
 
