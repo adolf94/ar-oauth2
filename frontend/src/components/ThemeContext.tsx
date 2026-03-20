@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useState, useMemo, useEffect, type ReactNode } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
@@ -19,14 +19,57 @@ export const useThemeControl = () => {
 
 export const ThemeControlProvider = ({ children }: { children: ReactNode }) => {
   const [mode, setMode] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') return 'light';
+
+    // 1. Check Query Params (highest priority)
+    const params = new URLSearchParams(window.location.search);
+    const themeParam = params.get('theme');
+    if (themeParam === 'light' || themeParam === 'dark') {
+        // Store in sessionStorage to persist in that session
+        sessionStorage.setItem('theme-session', themeParam);
+        return themeParam as ThemeMode;
+    }
+
+    // 2. Check SessionStorage (previously set from query param)
+    const sessionSaved = sessionStorage.getItem('theme-session');
+    if (sessionSaved === 'light' || sessionSaved === 'dark') {
+        return sessionSaved as ThemeMode;
+    }
+
+    // 3. Check LocalStorage (persistent preference from manual toggle)
     const saved = localStorage.getItem('theme-mode');
-    return (saved as ThemeMode) || 'dark';
+    if (saved === 'light' || saved === 'dark') {
+        return saved as ThemeMode;
+    }
+
+    // 4. Check Browser Current Setting (fallback)
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+
+    return 'light'; // Final fallback to light mode
   });
+
+  useEffect(() => {
+    // Listen for system preference changes if no manual override or session storage exists
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = (e: MediaQueryListEvent) => {
+      if (!localStorage.getItem('theme-mode') && !sessionStorage.getItem('theme-session')) {
+        setMode(e.matches ? 'dark' : 'light');
+      }
+    };
+
+    mediaQuery.addEventListener('change', handleSystemThemeChange);
+    return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
+  }, []);
 
   const toggleTheme = () => {
     setMode((prev) => {
       const next = prev === 'light' ? 'dark' : 'light';
+      // Manual toggle persists in localStorage
       localStorage.setItem('theme-mode', next);
+      // Clear session storage so manual toggle takes priority over old query param
+      sessionStorage.removeItem('theme-session');
       return next;
     });
   };
