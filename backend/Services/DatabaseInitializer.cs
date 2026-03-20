@@ -55,21 +55,6 @@ namespace backend.Services
                 }
 
 
-                // 4. Ensure Cross-App Trust exists: ar-go-web -> ar-go-api / user
-                var trust = await _dbContext.CrossAppTrusts.FirstOrDefaultAsync(t => t.RequestingClientId == arGoWebId && t.TargetClientId == arGoApiId && t.ScopeName == "user");
-                if (trust == null)
-                {
-                    _logger.LogInformation("Seeding Cross-App Trust: {Requesting} -> {Target} / {Scope}", arGoWebId, arGoApiId, "user");
-                    trust = new CrossAppTrust
-                    {
-                        RequestingClientId = arGoWebId,
-                        TargetClientId = arGoApiId,
-                        ScopeName = "user",
-                        IsApproved = true
-                    };
-                    _dbContext.CrossAppTrusts.Add(trust);
-                }
-
                 // 5. Ensure Llamalabs Automate client exists
                 var llamalabsAutomateId = "llamalabs-automate";
                 var llamalabsAutomate = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == llamalabsAutomateId);
