@@ -1,5 +1,5 @@
-import { Box, Button, Card, CardContent, Chip, CircularProgress, Divider, List, ListItem, ListItemText, Typography, IconButton, Container } from '@mui/material';
-import { Delete as DeleteIcon, Fingerprint as FingerprintIcon, AdminPanelSettings as AdminIcon } from '@mui/icons-material';
+import { Box, Button, Card, CardContent, Chip, CircularProgress, Divider, List, ListItem, ListItemText, Typography, IconButton, Container, TextField } from '@mui/material';
+import { Delete as DeleteIcon, Fingerprint as FingerprintIcon, AdminPanelSettings as AdminIcon, Android as AndroidIcon } from '@mui/icons-material';
 import { useEffect, useState } from 'react';
 import * as Passwordless from '@passwordlessdev/passwordless-client';
 import api from '../api';
@@ -15,6 +15,8 @@ interface UserProfile {
   id: string;
   email: string;
   roles: string[];
+  automateDeviceName?: string;
+  hasAutomateSecret: boolean;
 }
 
 interface Passkey {
@@ -29,12 +31,21 @@ export default function Profile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [passkeys, setPasskeys] = useState<Passkey[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Automate Settings State
+  const [automateSecret, setAutomateSecret] = useState('');
+  const [automateDevice, setAutomateDevice] = useState('');
+  const [savingAutomate, setSavingAutomate] = useState(false);
+
   const navigate = useNavigate();
 
   const fetchProfile = async () => {
     try {
       const res = await api.get('/profile');
       setProfile(res.data);
+      if (res.data.automateDeviceName) {
+        setAutomateDevice(res.data.automateDeviceName);
+      }
     } catch (err) {
       console.error('Failed to fetch profile', err);
     }
@@ -78,6 +89,24 @@ export default function Profile() {
       setPasskeys(prev => prev.filter(pk => pk.credentialId !== credentialId));
     } catch (err) {
       console.error('Delete error', err);
+    }
+  };
+
+  const handleSaveAutomate = async () => {
+    setSavingAutomate(true);
+    try {
+      await api.post('/profile/automate', {
+        secret: automateSecret || undefined, // Send only if not empty
+        deviceName: automateDevice
+      });
+      alert('Automate settings saved successfully!');
+      setAutomateSecret(''); // Clear secret field after save
+      fetchProfile();
+    } catch (err) {
+      console.error('Save error', err);
+      alert('Failed to save Automate settings.');
+    } finally {
+      setSavingAutomate(false);
     }
   };
 
@@ -138,6 +167,57 @@ export default function Profile() {
               {profile?.roles.map(role => (
                 <Chip key={role} label={role} size="small" color="primary" variant="outlined" sx={{ borderRadius: 1, fontWeight: 700 }} />
               ))}
+            </Box>
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 4 }}>
+        <CardContent sx={{ p: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+            <AndroidIcon color="success" />
+            <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "'JetBrains Mono', monospace" }}>
+              Llamalabs Automate
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Enable push notifications for authentication data via Automate Cloud Receive.
+          </Typography>
+          <Divider sx={{ mb: 3 }} />
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <TextField
+                label="Automate Secret"
+                type="password"
+                variant="outlined"
+                fullWidth
+                value={automateSecret}
+                onChange={(e) => setAutomateSecret(e.target.value)}
+                placeholder={profile?.hasAutomateSecret ? '•••••••• (Saved)' : 'Enter Automate Secret'}
+                helperText="Required for Cloud Receive push"
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="Device Name"
+                variant="outlined"
+                fullWidth
+                value={automateDevice}
+                onChange={(e) => setAutomateDevice(e.target.value)}
+                placeholder="e.g. Pixel 8"
+                helperText="Registered device name in Automate"
+              />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button 
+                variant="contained" 
+                color="success" 
+                onClick={handleSaveAutomate}
+                disabled={savingAutomate || !automateDevice}
+                sx={{ fontWeight: 700, px: 4 }}
+              >
+                {savingAutomate ? 'Saving...' : 'Save Automate Settings'}
+              </Button>
             </Box>
           </Box>
         </CardContent>

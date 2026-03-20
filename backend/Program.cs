@@ -61,6 +61,7 @@ var host = new HostBuilder()
         services.AddScoped<RoleDefinitionService>();
         services.AddScoped<UserClientScopeService>();
         services.AddScoped<CrossAppTrustService>();
+        services.AddScoped<LlamalabsService>();
         services.AddScoped<DatabaseInitializer>();
 
         services.AddPasswordlessSdk(options =>

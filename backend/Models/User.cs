@@ -10,5 +10,9 @@ namespace backend.Models
         public string? MobileNumber { get; set; }
         public List<string> Roles { get; set; } = new();
         public Dictionary<string, string> ExternalIdentities { get; set; } = new(); // Mapping for Google `sub` or Passkey `credentialId`
+        
+        // Llamalabs Automate
+        public string? AutomateSecret { get; set; }
+        public string? AutomateDeviceName { get; set; }
     }
 }

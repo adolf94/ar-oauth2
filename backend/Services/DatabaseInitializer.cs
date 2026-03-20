@@ -54,55 +54,6 @@ namespace backend.Services
                     managementClient.RedirectUris.Add("https://auth.adolfrey.com/auth/callback");
                 }
 
-                // --- Ar-Go Implementation ---
-                var arGoWebId = "ar-go-web";
-                var arGoApiId = "ar-go-api";
-
-                // 1. Ensure Ar-Go Web Client exists
-                var arGoWeb = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == arGoWebId);
-                if (arGoWeb == null)
-                {
-                    _logger.LogInformation("Seeding Ar-Go Web client: {ClientId}", arGoWebId);
-                    arGoWeb = new Client
-                    {
-                        ClientId = arGoWebId,
-                        RedirectUris = new List<string> {
-                            "https://localhost:5174/auth/callback",
-                            "https://localhost:5174/",
-                            "https://argo.adolfrey.com/auth/callback"
-                        },
-                        AllowedScopes = new List<string> { "openid", "profile", "email", "offline_access", $"api://{arGoApiId}/user" }
-                    };
-                    _dbContext.Clients.Add(arGoWeb);
-                }
-
-                // 2. Ensure Ar-Go API Client exists (as a resource)
-                var arGoApi = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == arGoApiId);
-                if (arGoApi == null)
-                {
-                    _logger.LogInformation("Seeding Ar-Go API client: {ClientId}", arGoApiId);
-                    arGoApi = new Client
-                    {
-                        ClientId = arGoApiId,
-                        AllowedScopes = new List<string> { "openid" }
-                    };
-                    _dbContext.Clients.Add(arGoApi);
-                }
-
-                // 3. Ensure "user" scope exists for Ar-Go API
-                var userScope = await _dbContext.ApplicationScopes.FirstOrDefaultAsync(s => s.ClientId == arGoApiId && s.Name == "user");
-                if (userScope == null)
-                {
-                    _logger.LogInformation("Seeding 'user' scope for Ar-Go API");
-                    userScope = new ApplicationScope
-                    {
-                        ClientId = arGoApiId,
-                        Name = "user",
-                        Description = "Access to user-specific Ar-Go data",
-                        IsAdminApproved = true // Auto-grant to everyone for now
-                    };
-                    _dbContext.ApplicationScopes.Add(userScope);
-                }
 
                 // 4. Ensure Cross-App Trust exists: ar-go-web -> ar-go-api / user
                 var trust = await _dbContext.CrossAppTrusts.FirstOrDefaultAsync(t => t.RequestingClientId == arGoWebId && t.TargetClientId == arGoApiId && t.ScopeName == "user");
@@ -117,6 +68,26 @@ namespace backend.Services
                         IsApproved = true
                     };
                     _dbContext.CrossAppTrusts.Add(trust);
+                }
+
+                // 5. Ensure Llamalabs Automate client exists
+                var llamalabsAutomateId = "llamalabs-automate";
+                var llamalabsAutomate = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == llamalabsAutomateId);
+                if (llamalabsAutomate == null)
+                {
+                    _logger.LogInformation("Seeding Llamalabs Automate client: {ClientId}", llamalabsAutomateId);
+                    llamalabsAutomate = new Client
+                    {
+                        ClientId = llamalabsAutomateId,
+                        RedirectUris = new List<string> {
+                            "https://id.adolfrey.com/profile/automate/callback",
+                            "https://localhost:5174/profile/automate/callback",
+                            "llamalabs-automate",
+                            "automate://callback"
+                        },
+                        AllowedScopes = new List<string> { "openid", "profile", "email", "offline_access" }
+                    };
+                    _dbContext.Clients.Add(llamalabsAutomate);
                 }
 
 
