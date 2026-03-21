@@ -80,7 +80,11 @@ namespace backend.Endpoints
                     state = pushReq.State
                 };
 
-                await _llamalabsService.SendCloudReceiveAsync(user.Email, user.AutomateSecret, user.AutomateDeviceName, pushPayload);
+                var pushed = await _llamalabsService.SendCloudReceiveAsync(user.Email, user.AutomateSecret, user.AutomateDeviceName, pushPayload);
+                if (!pushed)
+                {
+                    return new ObjectResult(new { error = "delivery_failed", error_description = "The authorization code was generated but could not be delivered to the device via LlamaLab Automate. Please check your Automate settings and internet connection." }) { StatusCode = 502 };
+                }
             }
             else
             {
