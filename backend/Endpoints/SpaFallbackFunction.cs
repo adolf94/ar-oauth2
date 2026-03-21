@@ -1,10 +1,12 @@
-using System.Net;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using System.IO;
 using System.Threading.Tasks;
+using System;
+using System.Net;
 
 namespace backend.Endpoints
 {
@@ -19,15 +21,15 @@ namespace backend.Endpoints
             _env = env;
         }
 
-        [Function("SpaFallback")]
-        public async Task<HttpResponseData> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "{*path}")] HttpRequestData req,
+        [Function("Z_SpaFallback")]
+        public async Task<IActionResult> Run(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "{*path}")] HttpRequest req,
             string? path)
         {
             // Do not intercept API requests or well-known endpoints
             if (path != null && path.StartsWith("api/"))
             {
-                return req.CreateResponse(HttpStatusCode.NotFound);
+                return new NotFoundResult();
             }
 
             var baseDir = AppContext.BaseDirectory;
@@ -37,34 +39,25 @@ namespace backend.Endpoints
             // If an explicit file matches, serve it
             if (File.Exists(filePath))
             {
-                return await ServeFileAsync(req, filePath);
+                return await ServeFileAsync(filePath);
             }
 
             // Otherwise, serve the SPA index.html
             var indexPath = Path.Combine(baseDir, "wwwroot", "index.html");
             if (File.Exists(indexPath))
             {
-                return await ServeFileAsync(req, indexPath, "text/html; charset=utf-8");
+                return await ServeFileAsync(indexPath, "text/html; charset=utf-8");
             }
 
-            var notFoundResponse = req.CreateResponse(HttpStatusCode.NotFound);
-
-
             _logger.LogInformation($"File was not found in {filePath}");
-
-            await notFoundResponse.WriteStringAsync("Not Found");
-            return notFoundResponse;
+            return new NotFoundResult();
         }
 
-        private async Task<HttpResponseData> ServeFileAsync(HttpRequestData req, string filePath, string? overrideContentType = null)
+        private async Task<IActionResult> ServeFileAsync(string filePath, string? overrideContentType = null)
         {
-            var response = req.CreateResponse(HttpStatusCode.OK);
             string contentType = overrideContentType ?? GetContentType(filePath);
-            
-            response.Headers.Add("Content-Type", contentType);
             var bytes = await File.ReadAllBytesAsync(filePath);
-            await response.Body.WriteAsync(bytes, 0, bytes.Length);
-            return response;
+            return new FileContentResult(bytes, contentType);
         }
 
         private string GetContentType(string filePath)

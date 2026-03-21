@@ -39,9 +39,9 @@ export default function AutomateCallback() {
 
   return (
     <Container maxWidth="sm" sx={{ py: 12 }}>
-      <Card sx={{ 
-        borderRadius: 6, 
-        textAlign: 'center', 
+      <Card sx={{
+        borderRadius: 6,
+        textAlign: 'center',
         p: 4,
         background: 'rgba(255, 255, 255, 0.02)',
         backdropFilter: 'blur(20px)',
@@ -92,9 +92,9 @@ export default function AutomateCallback() {
           )}
         </CardContent>
       </Card>
-      
+
       <Typography variant="caption" sx={{ display: 'block', mt: 4, textAlign: 'center', opacity: 0.5, letterSpacing: 1, textTransform: 'uppercase' }}>
-        AR Auth • Llamalabs Automate Integration
+        Atlas Rig • Llamalabs Automate Integration
       </Typography>
     </Container>
   );

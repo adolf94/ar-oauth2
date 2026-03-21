@@ -10,6 +10,7 @@ const Profile = lazyRouteComponent(() => import('./pages/Profile'));
 const AuthCallback = lazyRouteComponent(() => import('./pages/AuthCallback'));
 const PopupCallback = lazyRouteComponent(() => import('./pages/PopupCallback'));
 const ErrorPage = lazyRouteComponent(() => import('./pages/ErrorPage'));
+const LoginSuccess = lazyRouteComponent(() => import('./pages/LoginSuccess'));
 const AutomateCallback = lazyRouteComponent(() => import('./pages/AutomateCallback'));
 
 const rootRoute = createRootRoute();
@@ -31,6 +32,12 @@ const authCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/auth/callback',
   component: AuthCallback,
+});
+
+const loginSuccessRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/login/success',
+  component: LoginSuccess,
 });
 
 const popupCallbackRoute = createRoute({
@@ -98,7 +105,8 @@ const routeTree = rootRoute.addChildren([
   profileRoute, 
   automateCallbackRoute,
   adminRoute,
-  errorPageRoute
+  errorPageRoute,
+  loginSuccessRoute
 ]);
 
 export const router = createRouter({ routeTree });

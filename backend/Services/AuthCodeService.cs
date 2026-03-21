@@ -44,7 +44,7 @@ namespace backend.Services
             if (authCode.ClientId != clientId || authCode.RedirectUri != redirectUri) return null;
 
             // Validate PKCE code verifier
-            if (authCode.CodeChallengeMethod == "S256")
+            if (string.Equals(authCode.CodeChallengeMethod, "S256", StringComparison.OrdinalIgnoreCase))
             {
                 using var sha256 = SHA256.Create();
                 var hash = sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier));

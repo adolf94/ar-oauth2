@@ -7,7 +7,7 @@ namespace backend.Configuration
 
         // Google OAuth
         public GoogleConfig Google { get; set; } = new();
-
+        public TelegramConfig Telegram { get; set; } = new();
         // Passwordless.dev
         public PasswordlessConfig Passwordless { get; set; } = new();
 
@@ -23,6 +23,12 @@ namespace backend.Configuration
     }
 
     public class GoogleConfig
+    {
+        public string ClientId { get; set; } = string.Empty;
+        public string ClientSecret { get; set; } = string.Empty;
+        public string RedirectUri { get; set; } = string.Empty;
+    }
+    public class TelegramConfig
     {
         public string ClientId { get; set; } = string.Empty;
         public string ClientSecret { get; set; } = string.Empty;

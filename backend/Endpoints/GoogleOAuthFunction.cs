@@ -62,6 +62,7 @@ namespace backend.Endpoints
             var codeChallenge = (string?)req.Query["code_challenge"] ?? string.Empty;
             var codeChallengeMethod = (string?)req.Query["code_challenge_method"] ?? string.Empty;
             var scope = (string?)req.Query["scope"] ?? string.Empty;
+            var linkToken = (string?)req.Query["link_token"];
 
             if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(redirectUri))
             {
@@ -81,6 +82,11 @@ namespace backend.Endpoints
                 new Claim("code_challenge_method", codeChallengeMethod),
                 new Claim("scope", scope)
             };
+
+            if (!string.IsNullOrEmpty(linkToken))
+            {
+                claims.Add(new Claim("link_token", linkToken));
+            }
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
@@ -163,6 +169,7 @@ namespace backend.Endpoints
             var spCodeChallenge = principal.FindFirst("code_challenge")?.Value ?? "";
             var spCodeChallengeMethod = principal.FindFirst("code_challenge_method")?.Value ?? "";
             var spScope = principal.FindFirst("scope")?.Value ?? "";
+            var linkToken = principal.FindFirst("link_token")?.Value;
 
             // 2. Exchange the Google code for an ID token
             var googleClientId = _appConfig.Google.ClientId;
@@ -220,15 +227,59 @@ namespace backend.Endpoints
                 return new UnauthorizedObjectResult(new { error = "invalid_token", error_description = "Invalid Google ID token." });
             }
 
-            var email = payload.Email;
-            var user = await _userService.GetByEmailAsync(email);
-            if (user == null)
+            var googleEmail = payload.Email;
+            var googleSub = payload.Subject;
+            var idBasedEmail = $"{googleSub}@accounts.google.com";
+            
+            var user = await _userService.GetByExternalIdentityAsync("google", googleSub);
+            
+            // Link Mode: If we have a link token, we MUST link to that user
+            if (!string.IsNullOrEmpty(linkToken))
             {
-                _logger.LogInformation("User {Email} not found — creating stub user for Google login.", email);
-                user = await _userService.CreateUserAsync(email, null, new List<string> { "unregistered" });
+                try {
+                    var linkTokenHandler = new JwtSecurityTokenHandler();
+                    var linkPrincipal = linkTokenHandler.ValidateToken(linkToken, new TokenValidationParameters {
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKeys = _rsaKeyService.GetValidationKeys(),
+                        ValidateIssuer = false,
+                        ValidateAudience = false,
+                        ValidateLifetime = true
+                    }, out _);
+                    var targetUserId = linkPrincipal.FindFirst("link_user_id")?.Value;
+                    if (!string.IsNullOrEmpty(targetUserId)) {
+                        _logger.LogInformation("Linking Google {Sub} to user {TargetUserId} via link_token", googleSub, targetUserId);
+                        await _userService.LinkExternalIdentityAsync(targetUserId, "google", googleSub);
+                        user = await _userService.GetByIdAsync(targetUserId);
+                    }
+                } catch (Exception ex) {
+                    _logger.LogWarning(ex, "Invalid link_token in Google callback.");
+                }
             }
 
-            // 4. Generate AR Auth code
+            if (user == null)
+            {
+                // Also check by the ID-based email for backward compatibility or migration
+                user = await _userService.GetByEmailAsync(idBasedEmail);
+                
+                if (user == null)
+                {
+                    // Fallback: Check by the real Google email
+                    user = await _userService.GetByEmailAsync(googleEmail);
+                    if (user != null)
+                    {
+                        _logger.LogInformation("Found existing user by real email {Email} — linking to Google ID {Sub}", googleEmail, googleSub);
+                        await _userService.LinkExternalIdentityAsync(user.Id, "google", googleSub);
+                    }
+                }
+
+                if (user == null)
+                {
+                    _logger.LogInformation("User {Sub} not found — creating user with Google ID-based email.", googleSub);
+                    user = await _userService.CreateUserAsync(idBasedEmail, null, new List<string> { "unregistered" }, "google", googleSub);
+                }
+            }
+
+            // 4. Generate Atlas Rig code
             var authCode = await _authCodeService.CreateAuthCodeAsync(
                 spClientId,
                 user.Id,
@@ -238,13 +289,21 @@ namespace backend.Endpoints
                 spScope
             );
 
-            // 5. Redirect back to original SP redirect_uri with the AR Auth code
-            var finalRedirectUrl = $"{spRedirectUri}?code={Uri.EscapeDataString(authCode.Id)}";
-            if (!string.IsNullOrEmpty(spOriginalState))
-            {
-                finalRedirectUrl += $"&state={Uri.EscapeDataString(spOriginalState)}";
-            }
+            // 5. Update Recently Used Accounts cookie
+            var recentIds = AuthHelper.GetRecentUserIds(req);
+            recentIds.Insert(0, user.Id);
+            AuthHelper.SetRecentUserIds(req.HttpContext.Response, recentIds);
 
+            // 5. Redirect back to Atlas Rig Frontend success page first
+            var atlasRigHost = _appConfig.Jwt.Issuer.Replace("/api", ""); 
+            var finalRedirectUrl = $"{atlasRigHost}/login/success" +
+                                   $"?code={Uri.EscapeDataString(authCode.Id)}" +
+                                   $"&state={Uri.EscapeDataString(spOriginalState ?? "")}" +
+                                   $"&redirect_uri={Uri.EscapeDataString(spRedirectUri)}" +
+                                   $"&email={Uri.EscapeDataString(user.Email)}" +
+                                   $"&id={Uri.EscapeDataString(user.Id)}" +
+                                   $"&provider=google";
+            
             return new RedirectResult(finalRedirectUrl);
         }
     }

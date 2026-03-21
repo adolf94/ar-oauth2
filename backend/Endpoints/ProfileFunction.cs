@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace backend.Endpoints
 {
@@ -22,12 +25,14 @@ namespace backend.Endpoints
         private readonly ILogger<ProfileFunction> _logger;
         private readonly UserService _userService;
         private readonly TokenService _tokenService;
+        private readonly RsaKeyService _rsaKeyService;
 
-        public ProfileFunction(ILogger<ProfileFunction> logger, UserService userService, TokenService tokenService)
+        public ProfileFunction(ILogger<ProfileFunction> logger, UserService userService, TokenService tokenService, RsaKeyService rsaKeyService)
         {
             _logger = logger;
             _userService = userService;
             _tokenService = tokenService;
+            _rsaKeyService = rsaKeyService;
         }
 
         [Function("GetProfile")]
@@ -54,7 +59,7 @@ namespace backend.Endpoints
                 user.Id,
                 user.Email,
                 user.Roles,
-                user.ExternalIdentities,
+                ExternalIdentities = user.ExternalIdentities.ToDictionary(i => i.Provider, i => i.ProviderId),
                 user.AutomateDeviceName,
                 HasAutomateSecret = !string.IsNullOrEmpty(user.AutomateSecret)
             });
@@ -89,6 +94,39 @@ namespace backend.Endpoints
 
             _logger.LogInformation("Updated Automate settings for user {UserId}", userId);
             return new OkResult();
+        }
+        [Function("CreateLinkToken")]
+        public async Task<IActionResult> CreateLinkToken(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/profile/link-token")] HttpRequest req)
+        {
+            var (principal, error) = AuthHelper.ValidateToken(req, _tokenService, _logger);
+            if (error != null) return error;
+
+            var userId = principal!.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_token_claims" });
+            }
+
+            // Create a short-lived link token
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = _rsaKeyService.GetSigningKey();
+
+            var claims = new List<Claim>
+            {
+                new Claim("link_user_id", userId),
+                new Claim("type", "link_account")
+            };
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddMinutes(5),
+                SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
+            };
+
+            var token = tokenHandler.WriteToken(tokenHandler.CreateToken(tokenDescriptor));
+            return new OkObjectResult(new { link_token = token });
         }
     }
 }

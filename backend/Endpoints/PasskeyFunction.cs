@@ -18,13 +18,13 @@ namespace backend.Endpoints
 {
     public class PasskeyLoginRequest
     {
-        public string Token { get; set; } = string.Empty;
-        public string? ClientId { get; set; }
-        public string? RedirectUri { get; set; }
-        public string? State { get; set; }
-        public string? CodeChallenge { get; set; }
-        public string? CodeChallengeMethod { get; set; }
-        public string? Scope { get; set; }
+        public string token { get; set; } = string.Empty;
+        public string? client_id { get; set; }
+        public string? redirect_uri { get; set; }
+        public string? state { get; set; }
+        public string? code_challenge { get; set; }
+        public string? code_challenge_method { get; set; }
+        public string? scope { get; set; }
     }
 
     public class PasskeyFunction
@@ -55,8 +55,8 @@ namespace backend.Endpoints
         {
             _logger.LogInformation("Passkey login initiated.");
 
-            var requestBody = await req.ReadFromJsonAsync<PasskeyLoginRequest>();
-            if (requestBody == null || string.IsNullOrEmpty(requestBody.Token))
+            var requestBody = await req.ReadFromJsonAsync<PasskeyLoginRequest>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (requestBody == null || string.IsNullOrEmpty(requestBody.token))
             {
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Token is required." });
             }
@@ -64,9 +64,9 @@ namespace backend.Endpoints
             try
             {
                 // 1. Verify the passkey token
-                var verifiedUser = await _passwordlessClient.VerifyAuthenticationTokenAsync(requestBody.Token);
+                var verifiedUser = await _passwordlessClient.VerifyAuthenticationTokenAsync(requestBody.token);
                 
-                // 2. Resolve the user from the database using the Passwordless UserId (mapped to AR Auth User Id)
+                // 2. Resolve the user from the database using the Passwordless UserId (mapped to Atlas Rig User Id)
                 var user = await _userService.GetByIdAsync(verifiedUser.UserId);
                 if (user == null)
                 {
@@ -74,17 +74,22 @@ namespace backend.Endpoints
                     return new UnauthorizedObjectResult(new { error = "user_not_found" });
                 }
 
-                // 3. Generate AR Auth code (Authorization Code Flow with PKCE)
+                // 3. Generate Atlas Rig code (Authorization Code Flow with PKCE)
                 var authCode = await _authCodeService.CreateAuthCodeAsync(
-                    requestBody.ClientId ?? string.Empty,
+                    requestBody.client_id ?? string.Empty,
                     user.Id,
-                    requestBody.RedirectUri ?? string.Empty,
-                    requestBody.CodeChallenge ?? string.Empty,
-                    requestBody.CodeChallengeMethod ?? string.Empty,
-                    requestBody.Scope ?? string.Empty
+                    requestBody.redirect_uri ?? string.Empty,
+                    requestBody.code_challenge ?? string.Empty,
+                    requestBody.code_challenge_method ?? string.Empty,
+                    requestBody.scope ?? string.Empty
                 );
 
-                return new OkObjectResult(new { code = authCode.Id, state = requestBody.State });
+                // 4. Update Recently Used Accounts cookie
+                var recentIds = AuthHelper.GetRecentUserIds(req);
+                recentIds.Insert(0, user.Id);
+                AuthHelper.SetRecentUserIds(req.HttpContext.Response, recentIds);
+
+                return new OkObjectResult(new { code = authCode.Id, state = requestBody.state, user = new { id = user.Id, email = user.Email } });
             }
             catch (PasswordlessApiException ex)
             {
@@ -102,14 +107,15 @@ namespace backend.Endpoints
         public async Task<IActionResult> RegisterStart(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/passkey/register/start")] HttpRequest req)
         {
+            var body = await req.ReadFromJsonAsync<Dictionary<string, string>>();
+
             // Try to get email from authenticated user first
             var (principal, authError) = AuthHelper.ValidateToken(req, _tokenService, _logger);
-            string? email = principal?.FindFirst(ClaimTypes.Email)?.Value;
+            string? email = principal?.FindFirst(ClaimTypes.Email)?.Value ?? principal?.FindFirst("email")?.Value;
 
             if (string.IsNullOrEmpty(email))
             {
                 // Fallback to body for initial enrollment testing if not authenticated
-                var body = await req.ReadFromJsonAsync<Dictionary<string, string>>();
                 if (body == null || !body.ContainsKey("email"))
                 {
                     return new BadRequestObjectResult(new { error = "email_required" });
@@ -123,10 +129,14 @@ namespace backend.Endpoints
                 user = await _userService.CreateUserAsync(email, null, new List<string> { "user" });
             }
 
+            // Differentiation: Prepend user ID
+            var rawNickname = body != null && body.ContainsKey("nickname") ? body["nickname"] : "New Passkey";
+            var differentiatedDisplayName = $"{user.Id}:{rawNickname}";
+
             var registerOptions = new RegisterOptions(user.Id, email)
             {
                 Username = email,
-                DisplayName = email,
+                DisplayName = differentiatedDisplayName,
                 Aliases = new HashSet<string> { email }
             };
 

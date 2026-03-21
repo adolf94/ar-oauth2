@@ -56,7 +56,7 @@ namespace backend.Endpoints
             // to call the standard /api/token endpoint with its PKCE code_verifier.
             var authCode = await _dbContext.AuthCodes.FirstOrDefaultAsync(c => c.Id == pushReq.Code);
 
-            if (authCode == null || authCode.ExpiresAt < DateTime.UtcNow)
+           if (authCode == null || authCode.ExpiresAt < DateTime.UtcNow)
             {
                 _logger.LogWarning("Invalid or expired auth code provided to automate push API: {Code}", pushReq.Code);
                 return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "Code is invalid or expired." });

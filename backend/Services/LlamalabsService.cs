@@ -1,7 +1,9 @@
 using System;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 
 namespace backend.Services
@@ -30,15 +32,24 @@ namespace backend.Services
             // We'll send it as a JSON string.
             var payloadJson = JsonSerializer.Serialize(payload);
             
-            // Construct the URL for Cloud Receive push
-            var url = $"https://llamalab.com/automate/cloud/message?to={Uri.EscapeDataString(email)}&secret={Uri.EscapeDataString(secret)}&device={Uri.EscapeDataString(device)}&payload={Uri.EscapeDataString(payloadJson)}";
+            // Construct the content for Cloud Receive push
+            var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "to", email },
+                { "secret", secret },
+                { "device", device },
+                { "payload", payloadJson }
+            });
 
             _logger.LogInformation("Pushing data to Llamalabs Automate Cloud Receive for user: {Email}, device: {Device}", email, device);
 
             try
             {
-                // Note: Documentation says it should be a POST request.
-                var response = await _httpClient.PostAsync(url, null);
+                // Create a cancellation token for timeout (e.g., 10 seconds)
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+                // Documentation says it should be a POST request with form-urlencoded content.
+                var response = await _httpClient.PostAsync("https://llamalab.com/automate/cloud/message", content, cts.Token);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -47,10 +58,15 @@ namespace backend.Services
                 }
                 else
                 {
-                    var errorContent = await response.Content.ReadAsStringAsync();
+                    var errorContent = await response.Content.ReadAsStringAsync(cts.Token);
                     _logger.LogError("Llamalabs Automate Cloud Receive failed. Status: {StatusCode}, Error: {Error}", response.StatusCode, errorContent);
                     return false;
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Llamalabs Automate push request timed out after 10 seconds.");
+                return false;
             }
             catch (Exception ex)
             {

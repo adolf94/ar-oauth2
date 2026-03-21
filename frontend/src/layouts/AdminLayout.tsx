@@ -23,7 +23,7 @@ export default function AdminLayout() {
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, bgcolor: 'background.paper', color: 'text.primary', boxShadow: 'none', borderBottom: '1px solid', borderColor: 'divider' }}>
         <Toolbar sx={{ justifyContent: 'space-between' }}>
           <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 800, letterSpacing: -1, textTransform: 'uppercase' }}>
-            <Box component="span" sx={{ color: 'primary.main', fontSize: '1.2em' }}>A</Box><Box component="span" sx={{ color: 'primary.main', fontSize: '1.2em' }}>R</Box> <Box component="span" sx={{ fontSize: '0.6em', opacity: 0.6, fontWeight: 400, ml: 1 }}>ATLAS RUNTIME</Box>
+            <Box component="span" sx={{ color: 'primary.main', fontSize: '1.2em' }}>A</Box><Box component="span" sx={{ color: 'primary.main', fontSize: '1.2em' }}>R</Box> <Box component="span" sx={{ fontSize: '0.6em', opacity: 0.6, fontWeight: 400, ml: 1 }}>ATLAS RIG</Box>
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Button
