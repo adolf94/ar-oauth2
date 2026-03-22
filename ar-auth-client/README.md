@@ -1,4 +1,4 @@
-# @atlas-realm/auth
+# @atlas-rig/auth
 
 A reusable OIDC client SDK for ArGo applications, built on top of `oidc-client-ts`.
 
@@ -12,7 +12,7 @@ A reusable OIDC client SDK for ArGo applications, built on top of `oidc-client-t
 ## Installation
 
 ```bash
-npm install @atlas-realm/auth
+npm install @atlas-rig/auth
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ npm install @atlas-realm/auth
 Wrap your application with the `AuthProvider` and provide your OIDC configuration.
 
 ```tsx
-import { AuthProvider } from '@atlas-realm/auth';
+import { AuthProvider } from '@atlas-rig/auth';
 
 const authConfig = {
   authority: 'https://auth.example.com',
@@ -43,7 +43,7 @@ function App() {
 ### 2. Use the Auth Hook
 
 ```tsx
-import { useAuth } from '@atlas-realm/auth';
+import { useAuth } from '@atlas-rig/auth';
 
 function YourComponent() {
   const { user, login, logout, isAuthenticated } = useAuth();

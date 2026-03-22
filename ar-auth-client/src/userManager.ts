@@ -1,4 +1,4 @@
-import { UserManager, WebStorageStateStore, type UserManagerSettings, type User as OidcUser } from 'oidc-client-ts';
+import { UserManager, WebStorageStateStore, type UserManagerSettings, User as OidcUser } from 'oidc-client-ts';
 
 export interface AuthConfig {
   authority?: string;
