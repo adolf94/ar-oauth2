@@ -3,6 +3,7 @@ import { type User as OidcUser } from 'oidc-client-ts';
 import { getUserManager, initUserManager, refreshAccessToken, type AuthConfig } from './userManager';
 
 export interface User {
+  userId: string;
   email: string;
   name: string;
   picture: string;
@@ -42,9 +43,8 @@ const mapOidcUser = (oidcUser: OidcUser, clientId: string): User => {
     }
   });
 
-  const audience = clientId === 'ar-go-web' ? 'ar-go-api' : '';
-  const prefix = `api://${audience}/`;
-  
+  const prefix = `api://${clientId}/`;
+
   const scopes = allPermissions
     .filter(p => p.startsWith('api://'))
     .map(p => p.startsWith(prefix) ? p.substring(prefix.length) : p);
@@ -53,6 +53,7 @@ const mapOidcUser = (oidcUser: OidcUser, clientId: string): User => {
   const uniqueRoles = Array.from(new Set(allPermissions.filter(p => !p.includes('://') || p.startsWith('api://'))));
 
   return {
+    userId: (profile as any)['userId'] ?? profile.sub ?? '',
     email: profile.email ?? '',
     name: profile.name ?? '',
     picture: (profile as any)['picture'] ?? '',
@@ -81,6 +82,15 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
         const code = params.get('code');
         const state = params.get('state');
 
+        if (window.opener && (code || state)) {
+          try {
+            await userManager.signinPopupCallback();
+            return;
+          } catch (err) {
+            console.error('Popup callback failed:', err);
+          }
+        }
+
         if (!window.opener && code && state) {
           try {
             await userManager.signinRedirectCallback();
@@ -91,7 +101,7 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
         }
 
         let oidcUser = await userManager.getUser();
-        
+
         if (!oidcUser || oidcUser.expired) {
           try {
             oidcUser = await refreshAccessToken();
@@ -137,7 +147,7 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
       const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
       const isSocialInApp = /FBAN|FBAV|Instagram|Messenger|WhatsApp/i.test(ua);
       const isIOS = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
-      
+
       if (options?.useRedirect || isSocialInApp || isIOS) {
         await userManager.signinRedirect();
         return;
@@ -159,7 +169,12 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
   };
 
   const hasScope = (scope: string) => {
-    return user?.scopes.some(s => s.toLowerCase() === scope.toLowerCase()) ?? false;
+    const fullScope = `api://${config.clientId}/${scope}`.toLowerCase();
+    return user?.scopes.some(s => {
+      const sLower = s.toLowerCase();
+      return sLower === scope.toLowerCase() ||
+        sLower === fullScope || fullScope === "*";
+    }) ?? false;
   };
 
   return (
