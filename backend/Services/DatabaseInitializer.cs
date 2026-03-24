@@ -55,27 +55,6 @@ namespace backend.Services
                 }
 
 
-                // 5. Ensure Llamalabs Automate client exists
-                var llamalabsAutomateId = "llamalabs-automate";
-                var llamalabsAutomate = await _dbContext.Clients.FirstOrDefaultAsync(c => c.ClientId == llamalabsAutomateId);
-                if (llamalabsAutomate == null)
-                {
-                    _logger.LogInformation("Seeding Llamalabs Automate client: {ClientId}", llamalabsAutomateId);
-                    llamalabsAutomate = new Client
-                    {
-                        ClientId = llamalabsAutomateId,
-                        RedirectUris = new List<string> {
-                            "https://id.adolfrey.com/profile/automate/callback",
-                            "https://localhost:5174/profile/automate/callback",
-                            "llamalabs-automate",
-                            "automate://callback"
-                        },
-                        AllowedScopes = new List<string> { "openid", "profile", "email", "offline_access" }
-                    };
-                    _dbContext.Clients.Add(llamalabsAutomate);
-                }
-
-
                 await _dbContext.SaveChangesAsync();
                 _logger.LogInformation("Database initialization complete.");
             }

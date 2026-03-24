@@ -1,10 +1,10 @@
-# AR Auth - OAuth 2.0 Integration Guide
+# Atlas Rig - OAuth 2.0 Integration Guide
 
-Welcome to the **AR Auth** integration guide. This document explains how third-party and internal applications can connect to the AR Auth system to authenticate users via the **Authorization Code Flow with PKCE**.
+Welcome to the **Atlas Rig** integration guide. This document explains how third-party and internal applications can connect to the Atlas Rig system to authenticate users via the **Authorization Code Flow with PKCE**.
 
 ## 🚀 Overview
 
-AR Auth acts as a central Identity Provider (IdP) following OAuth 2.0 and OpenID Connect (OIDC) standards. 
+Atlas Rig Auth acts as a central Identity Provider (IdP) following OAuth 2.0 and OpenID Connect (OIDC) standards. 
 
 **Base URL**: `https://auth.adolfrey.com`
 
@@ -161,7 +161,7 @@ The `access_token` is a Signed JWT. Use it in the `Authorization: Bearer <token>
 
 ## 🌐 Cross-App Scopes & Trust
 
-AR Auth supports **Cross-App Trust**, allowing one application (App A) to request access to resources/scopes owned by another application (App B).
+Atlas Rig supports **Cross-App Trust**, allowing one application (App A) to request access to resources/scopes owned by another application (App B).
 
 ### Qualified Scope Format
 Cross-app scopes must use the following URI format:

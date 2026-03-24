@@ -98,14 +98,17 @@ namespace backend.Endpoints
                     }
                 }
 
-                var (accessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, validCode.Scopes);
-                var refreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id, client.ClientId, grantedScopes);
+                var sid = Guid.NewGuid().ToString();
+                
+                var (accessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, validCode.Scopes, sid: sid);
+                var refreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id, client.ClientId, grantedScopes, sid: sid);
                 
                 string? idToken = null;
                 if (validCode.Scopes.Contains("openid"))
                 {
-                   idToken = _tokenService.GenerateIdToken(user, client);
+                   idToken = _tokenService.GenerateIdToken(user, client, nonce: "", sid: sid);
                 }
+
 
                 return new OkObjectResult(new TokenResponse
                 {
@@ -147,12 +150,24 @@ namespace backend.Endpoints
                     _logger.LogInformation("Client {ClientId} is public; skipping secret validation for refresh_token.", client.ClientId);
                 }
 
-                var (newAccessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, storedToken.Scopes);
-                var newRefreshToken = await _tokenService.RotateRefreshTokenAsync(storedToken);
+                var sid = storedToken.Sid;
+                if (string.IsNullOrEmpty(sid)) sid = Guid.NewGuid().ToString();
+
+                var (newAccessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, storedToken.Scopes, sid: sid);
+                var newRefreshToken = await _tokenService.RotateRefreshTokenAsync(storedToken, sid: sid);
+
+
+                string? idToken = null;
+                if (grantedScopes != null && grantedScopes.Contains("openid"))
+                {
+                   idToken = _tokenService.GenerateIdToken(user, client, nonce: "", sid: sid);
+                }
+
 
                 return new OkObjectResult(new TokenResponse
                 {
                     AccessToken  = newAccessToken,
+                    IdToken      = idToken,
                     ExpiresIn    = 300,
                     RefreshToken = newRefreshToken,
                     TokenType    = "Bearer",

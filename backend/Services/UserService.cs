@@ -96,16 +96,5 @@ namespace backend.Services
             return true;
         }
 
-        public async Task<bool> UpdateAutomateSettingsAsync(string id, string? secret, string? deviceName)
-        {
-            var user = await _dbContext.Users.FindAsync(id);
-            if (user == null) return false;
-
-            user.AutomateSecret = secret;
-            user.AutomateDeviceName = deviceName;
-
-            await _dbContext.SaveChangesAsync();
-            return true;
-        }
     }
 }

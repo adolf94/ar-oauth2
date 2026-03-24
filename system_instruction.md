@@ -1,10 +1,10 @@
-# **Antigravity System Instructions**
+# **Atlas Rig System Instructions**
 
-This document outlines the architectural requirements and system behavior for **Antigravity**, a custom OAuth2 Identity Provider (IdP). Antigravity is designed to provide robust authentication and authorization services, supporting multi-tenant application registration, custom RBAC (Role-Based Access Control), and modern authentication methods like Passkeys and Google Social Auth.
+This document outlines the architectural requirements and system behavior for **Atlas Rig**, a custom OAuth2 Identity Provider (IdP). Atlas Rig is designed to provide robust authentication and authorization services, supporting multi-tenant application registration, custom RBAC (Role-Based Access Control), and modern authentication methods like Passkeys and Google Social Auth.
 
 # **Project Vision**
 
-Antigravity acts as the central authority for user identity across a distributed ecosystem. It must handle the full lifecycle of an OAuth2 flow, from client registration and authorization requests to token issuance and user profile management.
+Atlas Rig acts as the central authority for user identity across a distributed ecosystem. It must handle the full lifecycle of an OAuth2 flow, from client registration and authorization requests to token issuance and user profile management.
 
 # **Technical Architecture**
 
@@ -29,7 +29,7 @@ The system must support the **Authorization Code Flow** with PKCE (Proof Key for
 
 ### **Token and SPA Strategy**
 
-Since Antigravity will be used by Single Page Applications (SPAs), the **Authorization Code Flow with PKCE** is mandatory for all clients. Token lifecycles must be: Access Token: 5 minutes (short-lived), Refresh Token: 30 days (long-lived and rotating/one-time use). Single Logout (SLO) is explicitly **out of scope**; logout only requires local application session termination and client-side token revocation.
+Since Atlas Rig will be used by Single Page Applications (SPAs), the **Authorization Code Flow with PKCE** is mandatory for all clients. Token lifecycles must be: Access Token: 5 minutes (short-lived), Refresh Token: 30 days (long-lived and rotating/one-time use). Single Logout (SLO) is explicitly **out of scope**; logout only requires local application session termination and client-side token revocation.
 
 ## **2\. Authentication Methods**
 
@@ -58,7 +58,7 @@ An administrative module to manage the core user base.
 
 ## **Container: `Clients`**
 
-Stores information about applications authorized to use Antigravity.
+Stores information about applications authorized to use Atlas Rig.
 
 * `id`: Client ID (UUID)  
 * `secret`: Hashed Client Secret  

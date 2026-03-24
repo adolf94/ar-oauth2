@@ -14,12 +14,6 @@ using System.IdentityModel.Tokens.Jwt;
 
 namespace backend.Endpoints
 {
-    public class ProfileAutomateRequest
-    {
-        public string? Secret { get; set; }
-        public string? DeviceName { get; set; }
-    }
-
     public class ProfileFunction
     {
         private readonly ILogger<ProfileFunction> _logger;
@@ -59,42 +53,10 @@ namespace backend.Endpoints
                 user.Id,
                 user.Email,
                 user.Roles,
-                ExternalIdentities = user.ExternalIdentities.ToDictionary(i => i.Provider, i => i.ProviderId),
-                user.AutomateDeviceName,
-                HasAutomateSecret = !string.IsNullOrEmpty(user.AutomateSecret)
+                ExternalIdentities = user.ExternalIdentities.ToDictionary(i => i.Provider, i => i.ProviderId)
             });
         }
 
-        [Function("UpdateAutomateConfig")]
-        public async Task<IActionResult> UpdateAutomateConfig(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/profile/automate")] HttpRequest req)
-        {
-            var (principal, error) = AuthHelper.ValidateToken(req, _tokenService, _logger);
-            if (error != null) return error;
-
-            var userId = principal!.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return new UnauthorizedObjectResult(new { error = "invalid_token_claims" });
-            }
-
-            var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var updateReq = JsonSerializer.Deserialize<ProfileAutomateRequest>(requestBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            if (updateReq == null)
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request" });
-            }
-
-            var success = await _userService.UpdateAutomateSettingsAsync(userId, updateReq.Secret, updateReq.DeviceName);
-            if (!success)
-            {
-                return new NotFoundResult();
-            }
-
-            _logger.LogInformation("Updated Automate settings for user {UserId}", userId);
-            return new OkResult();
-        }
         [Function("CreateLinkToken")]
         public async Task<IActionResult> CreateLinkToken(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/profile/link-token")] HttpRequest req)

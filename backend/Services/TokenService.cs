@@ -30,7 +30,7 @@ namespace backend.Services
 
         // ── Access Token ────────────────────────────────────────────
 
-        public async Task<(string Token, string Scopes)> GenerateAccessToken(User user, Client client, string scopes)
+        public async Task<(string Token, string Scopes)> GenerateAccessToken(User user, Client client, string scopes, string? sid = null)
         {
             var key = _rsaKeyService.GetSigningKey();
 
@@ -103,6 +103,12 @@ namespace backend.Services
                 new Claim("client_id", client.ClientId),
                 new Claim("scope",     finalScopesString)
             };
+
+            // Linking ID Token for single logout via session ID
+            if (!string.IsNullOrEmpty(sid))
+            {
+                claims.Add(new Claim("sid", sid));
+            }
 
             // 1. Global Roles
             foreach (var role in user.Roles)
@@ -186,11 +192,12 @@ namespace backend.Services
 
         // ── Refresh Token ───────────────────────────────────────────
 
-        public async Task<string> GenerateRefreshTokenAsync(string userId, string clientId, string scopes)
+        public async Task<string> GenerateRefreshTokenAsync(string userId, string clientId, string scopes, string? sid = null)
         {
             var token = new Token
             {
                 Id = Guid.NewGuid().ToString().Replace("-", ""),
+                Sid = sid ?? string.Empty,
                 UserId = userId,
                 ClientId = clientId,
                 Scopes = scopes,
@@ -214,18 +221,18 @@ namespace backend.Services
             return token;
         }
 
-        public async Task<string> RotateRefreshTokenAsync(Token oldToken)
+        public async Task<string> RotateRefreshTokenAsync(Token oldToken, string? sid = null)
         {
             // Remove the old token (one-time use)
             _dbContext.Tokens.Remove(oldToken);
 
-            // Generate a fresh one, preserving scopes
-            return await GenerateRefreshTokenAsync(oldToken.UserId, oldToken.ClientId, oldToken.Scopes);
+            // Generate a fresh one, preserving scopes and relational ID
+            return await GenerateRefreshTokenAsync(oldToken.UserId, oldToken.ClientId, oldToken.Scopes, sid ?? oldToken.Sid);
         }
 
         // ── ID Token ────────────────────────────────────────────────
 
-        public string GenerateIdToken(User user, Client client, string nonce = "")
+        public string GenerateIdToken(User user, Client client, string nonce = "", string? sid = null)
         {
             var key = _rsaKeyService.GetSigningKey();
 
@@ -237,6 +244,12 @@ namespace backend.Services
                 new Claim(JwtRegisteredClaimNames.Iat,   DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
                 new Claim("nonce", nonce)
             };
+
+            if (!string.IsNullOrEmpty(sid))
+            {
+                claims.Add(new Claim("sid", sid));
+            }
+
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {

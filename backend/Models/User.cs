@@ -44,10 +44,5 @@ namespace backend.Models
 
         [Newtonsoft.Json.JsonConverter(typeof(UserIdentityConverter))]
         public List<UserIdentity> ExternalIdentities { get; set; } = new(); // Mapping for Google `sub` or Passkey `credentialId`
-        
-        // Llamalabs Automate
-        [System.Text.Json.Serialization.JsonIgnore]
-        public string? AutomateSecret { get; set; }
-        public string? AutomateDeviceName { get; set; }
     }
 }
