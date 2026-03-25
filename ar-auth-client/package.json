@@ -1,6 +1,6 @@
 {
   "name": "@adolf94/ar-auth-client",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A reusable OIDC client SDK for ArGo applications.",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
