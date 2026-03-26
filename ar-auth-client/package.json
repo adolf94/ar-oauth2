@@ -1,6 +1,6 @@
 {
   "name": "@adolf94/ar-auth-client",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "A reusable OIDC client SDK for ArGo applications.",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
@@ -10,13 +10,21 @@
     "url": "git+https://github.com/adolf94/ar-auth.git",
     "directory": "ar-auth-client"
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "source": "./src/index.ts"
+    }
+  },
   "type": "module",
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --minify",
-    "dev": "tsup src/index.ts --format cjs,esm --watch --dts",
+    "build": "tsup src/index.ts --format cjs,esm --dts --minify --sourcemap",
+    "dev": "tsup src/index.ts --format cjs,esm --watch --dts --sourcemap",
     "lint": "eslint src --ext .ts,.tsx"
   },
   "keywords": [

@@ -16,6 +16,7 @@ declare const getUserManager: () => UserManager;
 declare const refreshAccessToken: () => Promise<User$1 | null>;
 
 interface User {
+    userId: string;
     email: string;
     name: string;
     picture: string;
