@@ -16,7 +16,7 @@ namespace backend.Services
         public RSA Rsa { get; set; } = null!;
     }
 
-    public class RsaKeyService
+    public class RsaKeyService : IRsaKeyService
     {
         private readonly List<RsaKeyInfo> _keys = new();
         private readonly string? _primaryKeyId;

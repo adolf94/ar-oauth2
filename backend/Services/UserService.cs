@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services
 {
-    public class UserService
+    public class UserService : IUserService
     {
         private readonly AppDbContext _dbContext;
 

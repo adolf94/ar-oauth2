@@ -38,10 +38,10 @@ namespace backend.Services
                     {
                         Id = Guid.NewGuid(),
                         ClientId = managementClientId,
-                        ClientSecrets = new List<ClientSecret>(), // Public client
+
                         RedirectUris = new List<string> {
                             "https://auth.adolfrey.com/auth/callback",
-                            "https://localhost:5174/auth/callback", // Assuming localhost:5174 for second app dev
+                            "https://localhost:5174/auth/callback",
                             "https://localhost:5174/"
                         },
                         AllowedScopes = new List<string> { "openid", "profile", "admin", "manage" }
@@ -49,11 +49,24 @@ namespace backend.Services
 
                     _dbContext.Clients.Add(managementClient);
                 }
-                if (!managementClient.RedirectUris.Contains("https://auth.adolfrey.com/auth/callback"))
-                {
-                    managementClient.RedirectUris.Add("https://auth.adolfrey.com/auth/callback");
-                }
 
+                // Ensure users:read:all scope exists for this client
+                var scopeName = "users:read:all";
+                var managementScope = await _dbContext.ApplicationScopes.FirstOrDefaultAsync(s => s.ClientId == managementClientId && s.Name == scopeName);
+                if (managementScope == null)
+                {
+                    _logger.LogInformation("Seeding management scope: {ScopeName}", scopeName);
+                    managementScope = new ApplicationScope
+                    {
+                        Id = Guid.NewGuid(),
+                        ClientId = managementClientId,
+                        Name = scopeName,
+                        Description = "Management scope to read all user data and linked accounts.",
+                        IsAdminApproved = true,
+                        IsClientOnly = true
+                    };
+                    _dbContext.ApplicationScopes.Add(managementScope);
+                }
 
                 await _dbContext.SaveChangesAsync();
                 _logger.LogInformation("Database initialization complete.");

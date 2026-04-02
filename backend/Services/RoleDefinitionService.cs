@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services
 {
-    public class RoleDefinitionService
+    public class RoleDefinitionService : IRoleDefinitionService
     {
         private readonly AppDbContext _dbContext;
 

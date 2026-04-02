@@ -27,19 +27,19 @@ namespace backend.Endpoints
     public class GoogleOAuthFunction
     {
         private readonly ILogger<GoogleOAuthFunction> _logger;
-        private readonly AuthCodeService _authCodeService;
-        private readonly UserService _userService;
+        private readonly IAuthCodeService _authCodeService;
+        private readonly IUserService _userService;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly Configuration.AppConfig _appConfig;
-        private readonly RsaKeyService _rsaKeyService;
+        private readonly IRsaKeyService _rsaKeyService;
 
         public GoogleOAuthFunction(
             ILogger<GoogleOAuthFunction> logger,
-            AuthCodeService authCodeService,
-            UserService userService,
+            IAuthCodeService authCodeService,
+            IUserService userService,
             IHttpClientFactory httpClientFactory,
             Configuration.AppConfig appConfig,
-            RsaKeyService rsaKeyService)
+            IRsaKeyService rsaKeyService)
         {
             _logger = logger;
             _authCodeService = authCodeService;

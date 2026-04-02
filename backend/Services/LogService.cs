@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services
 {
-    public class LogService
+    public class LogService : ILogService
     {
         private readonly AppDbContext _context;
         private readonly ILogger<LogService> _logger;

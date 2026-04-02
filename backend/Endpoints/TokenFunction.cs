@@ -13,17 +13,17 @@ namespace backend.Endpoints
     public class TokenFunction
     {
         private readonly ILogger<TokenFunction> _logger;
-        private readonly AuthCodeService _authCodeService;
-        private readonly TokenService _tokenService;
-        private readonly UserService _userService;
-        private readonly ClientService _clientService;
+        private readonly IAuthCodeService _authCodeService;
+        private readonly ITokenService _tokenService;
+        private readonly IUserService _userService;
+        private readonly IClientService _clientService;
 
         public TokenFunction(
             ILogger<TokenFunction> logger,
-            AuthCodeService authCodeService,
-            TokenService tokenService,
-            UserService userService,
-            ClientService clientService)
+            IAuthCodeService authCodeService,
+            ITokenService tokenService,
+            IUserService userService,
+            IClientService clientService)
         {
             _logger = logger;
             _authCodeService = authCodeService;

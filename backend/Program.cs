@@ -52,17 +52,17 @@ var host = new HostBuilder()
         // Register Services
         services.AddHttpClient();
         services.AddSingleton(appConfig);
-        services.AddSingleton<RsaKeyService>();
-        services.AddScoped<UserService>();
-        services.AddScoped<ClientService>();
-        services.AddScoped<AuthCodeService>();
-        services.AddScoped<TokenService>();
-        services.AddScoped<ApplicationScopeService>();
-        services.AddScoped<RoleDefinitionService>();
-        services.AddScoped<UserClientScopeService>();
-        services.AddScoped<CrossAppTrustService>();
+        services.AddSingleton<IRsaKeyService, RsaKeyService>();
+        services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IClientService, ClientService>();
+        services.AddScoped<IAuthCodeService, AuthCodeService>();
+        services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IApplicationScopeService, ApplicationScopeService>();
+        services.AddScoped<IRoleDefinitionService, RoleDefinitionService>();
+        services.AddScoped<IUserClientScopeService, UserClientScopeService>();
+        services.AddScoped<ICrossAppTrustService, CrossAppTrustService>();
         services.AddScoped<DatabaseInitializer>();
-        services.AddScoped<LogService>();
+        services.AddScoped<ILogService, LogService>();
 
         services.AddPasswordlessSdk(options =>
         {

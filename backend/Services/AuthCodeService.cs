@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services
 {
-    public class AuthCodeService
+    public class AuthCodeService : IAuthCodeService
     {
         private readonly AppDbContext _dbContext;
 

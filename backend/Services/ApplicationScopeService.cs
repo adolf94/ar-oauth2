@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services
 {
-    public class ApplicationScopeService
+    public class ApplicationScopeService : IApplicationScopeService
     {
         private readonly AppDbContext _dbContext;
 
@@ -24,11 +24,11 @@ namespace backend.Services
                 .ToListAsync();
         }
 
-        public async Task<ApplicationScope> CreateScopeAsync(string clientId, string name, string? description, bool isAdminApproved = false)
+        public async Task<ApplicationScope> CreateScopeAsync(string clientId, string name, string? description, bool isAdminApproved = false, bool isClientOnly = false)
         {
             var existing = await _dbContext.ApplicationScopes
                 .Where(s => s.ClientId == clientId && s.Name == name)
-                .FirstOrDefaultAsync() != null;
+                .AnyAsync();
                 
             if (existing) throw new Exception("Scope already exists for this client");
 
@@ -37,7 +37,8 @@ namespace backend.Services
                 ClientId = clientId,
                 Name = name,
                 Description = description,
-                IsAdminApproved = isAdminApproved
+                IsAdminApproved = isAdminApproved,
+                IsClientOnly = isClientOnly
             };
 
             _dbContext.ApplicationScopes.Add(scope);

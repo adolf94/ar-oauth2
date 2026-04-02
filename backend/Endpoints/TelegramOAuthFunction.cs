@@ -21,20 +21,20 @@ namespace backend.Endpoints
     public class TelegramOAuthFunction
     {
         private readonly ILogger<TelegramOAuthFunction> _logger;
-        private readonly AuthCodeService _authCodeService;
-        private readonly UserService _userService;
+        private readonly IAuthCodeService _authCodeService;
+        private readonly IUserService _userService;
         private readonly Configuration.AppConfig _appConfig;
-        private readonly RsaKeyService _rsaKeyService;
+        private readonly IRsaKeyService _rsaKeyService;
         private readonly IHttpClientFactory _httpClientFactory;
 
         private const string RelayStateCookieName = "tg_relay_state";
 
         public TelegramOAuthFunction(
             ILogger<TelegramOAuthFunction> logger,
-            AuthCodeService authCodeService,
-            UserService userService,
+            IAuthCodeService authCodeService,
+            IUserService userService,
             Configuration.AppConfig appConfig,
-            RsaKeyService rsaKeyService,
+            IRsaKeyService rsaKeyService,
             IHttpClientFactory httpClientFactory)
         {
             _logger = logger;

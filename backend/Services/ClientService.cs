@@ -10,7 +10,7 @@ using System.Text;
 
 namespace backend.Services
 {
-    public class ClientService
+    public class ClientService : IClientService
     {
         private readonly AppDbContext _dbContext;
 

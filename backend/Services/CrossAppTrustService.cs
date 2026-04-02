@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services
 {
-    public class CrossAppTrustService
+    public class CrossAppTrustService : ICrossAppTrustService
     {
         private readonly AppDbContext _dbContext;
 

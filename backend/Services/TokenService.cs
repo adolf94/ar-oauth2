@@ -13,13 +13,13 @@ using Microsoft.Extensions.Configuration;
 
 namespace backend.Services
 {
-    public class TokenService
+    public class TokenService : ITokenService
     {
         private readonly AppDbContext _dbContext;
-        private readonly RsaKeyService _rsaKeyService;
+        private readonly IRsaKeyService _rsaKeyService;
         private readonly Configuration.AppConfig _appConfig;
 
-        public TokenService(AppDbContext dbContext, RsaKeyService rsaKeyService, Configuration.AppConfig appConfig)
+        public TokenService(AppDbContext dbContext, IRsaKeyService rsaKeyService, Configuration.AppConfig appConfig)
         {
             _dbContext = dbContext;
             _rsaKeyService = rsaKeyService;
