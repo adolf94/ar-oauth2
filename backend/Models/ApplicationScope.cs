@@ -9,8 +9,8 @@ namespace backend.Models
         public string Name { get; set; } = string.Empty;     // e.g., "products:read" (not including the app prefix/namespace)
         public string? Description { get; set; }
         public bool IsAdminApproved { get; set; } = false;
-        public bool IsClientOnly { get; set; } = false;
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public bool? IsClientOnly { get; set; } = false;
+        public DateTime? CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Fully qualified scope might look like: "api://[clientId]/[name]"
         public string FullScopeName => $"api://{ClientId}/{Name}";

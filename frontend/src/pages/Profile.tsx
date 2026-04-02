@@ -15,8 +15,17 @@ const p = new Passwordless.Client({
 interface UserProfile {
   id: string;
   email: string;
+  name?: string;
+  mobileNumber?: string;
   roles: string[];
-  externalIdentities: Record<string, string>;
+  externalIdentities: Array<{
+    provider: string;
+    providerId: string;
+    sub?: string;
+    name?: string;
+    email?: string;
+    mobileNumber?: string;
+  }>;
 }
 
 interface Passkey {
@@ -163,16 +172,22 @@ export default function Profile() {
           </Typography>
           <Divider sx={{ mb: 3 }} />
           <Box sx={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 2 }}>
-            <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>Email</Typography>
+            <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>Name</Typography>
+            <Typography fontWeight={600}>{profile?.name || '-'}</Typography>
+
+            <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>Primary Email</Typography>
             <Typography fontWeight={600}>{profile?.email}</Typography>
 
-            <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>User ID</Typography>
-            <Typography sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem', color: 'text.secondary' }}>{profile?.id}</Typography>
+            <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>Phone</Typography>
+            <Typography fontWeight={600}>{profile?.mobileNumber || '-'}</Typography>
 
-            <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>Roles</Typography>
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>User ID</Typography>
+            <Typography sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.81rem', color: 'text.secondary' }}>{profile?.id}</Typography>
+
+            <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>System Roles</Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
               {profile?.roles.map(role => (
-                <Chip key={role} label={role} size="small" color="primary" variant="outlined" sx={{ borderRadius: 1, fontWeight: 700 }} />
+                <Chip key={role} label={role} size="small" color="primary" variant="filled" sx={{ borderRadius: 1, fontWeight: 700 }} />
               ))}
             </Box>
           </Box>
@@ -190,35 +205,47 @@ export default function Profile() {
           <Divider sx={{ mb: 3 }} />
           
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {/* Google */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2, bgcolor: 'background.default', borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography fontWeight={600}>Google</Typography>
-                {profile?.externalIdentities['google'] ? (
-                  <Chip label="Connected" size="small" color="success" variant="outlined" />
-                ) : (
-                  <Chip label="Not Linked" size="small" variant="outlined" />
-                )}
-              </Box>
-              {!profile?.externalIdentities['google'] && (
-                <Button variant="outlined" size="small" onClick={() => handleLinkAccount('google')}>Link Account</Button>
-              )}
-            </Box>
-
-            {/* Telegram */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2, bgcolor: 'background.default', borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography fontWeight={600}>Telegram</Typography>
-                {profile?.externalIdentities['telegram'] ? (
-                  <Chip label="Connected" size="small" color="success" variant="outlined" />
-                ) : (
-                  <Chip label="Not Linked" size="small" variant="outlined" />
-                )}
-              </Box>
-              {!profile?.externalIdentities['telegram'] && (
-                <Button variant="outlined" size="small" onClick={() => handleLinkAccount('telegram')}>Link Account</Button>
-              )}
-            </Box>
+            {['google', 'telegram'].map(pvd => {
+              const identity = profile?.externalIdentities.find(i => i.provider === pvd);
+              return (
+                <Box key={pvd} sx={{ p: 2, bgcolor: 'background.default', borderRadius: 2, border: 1, borderColor: 'divider' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: identity ? 1.5 : 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Typography fontWeight={700} sx={{ textTransform: 'capitalize' }}>{pvd}</Typography>
+                      {identity ? (
+                        <Chip label="Connected" size="small" color="success" sx={{ height: 20 }} />
+                      ) : (
+                        <Chip label="Not Linked" size="small" variant="outlined" sx={{ height: 20 }} />
+                      )}
+                    </Box>
+                    {!identity && (
+                      <Button variant="outlined" size="small" onClick={() => handleLinkAccount(pvd as any)}>Link {pvd}</Button>
+                    )}
+                  </Box>
+                  
+                  {identity && (
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                       <Box>
+                          <Typography variant="caption" color="text.secondary" display="block">Internal ID (Sub)</Typography>
+                          <Typography variant="caption" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>{identity.sub || identity.providerId}</Typography>
+                       </Box>
+                       <Box>
+                          <Typography variant="caption" color="text.secondary" display="block">Name in Provider</Typography>
+                          <Typography variant="body2">{identity.name || '-'}</Typography>
+                       </Box>
+                       <Box>
+                          <Typography variant="caption" color="text.secondary" display="block">Email in Provider</Typography>
+                          <Typography variant="body2">{identity.email || '-'}</Typography>
+                       </Box>
+                       <Box>
+                          <Typography variant="caption" color="text.secondary" display="block">Mobile in Provider</Typography>
+                          <Typography variant="body2">{identity.mobileNumber || '-'}</Typography>
+                       </Box>
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
           </Box>
         </CardContent>
       </Card>

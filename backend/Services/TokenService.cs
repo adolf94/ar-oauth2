@@ -41,7 +41,7 @@ namespace backend.Services
 
             // Filter out any Client-Only scopes (User sessions cannot carry client-only permissions)
             var finalScopesList = scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Where(s => !clientScopes.Any(cs => (cs.Name == s || cs.FullScopeName == s) && cs.IsClientOnly))
+                .Where(s => !clientScopes.Any(cs => (cs.Name == s || cs.FullScopeName == s) && cs.IsClientOnly == true))
                 .ToList();
             
             // 1. Resolve and Validate Cross-App Scopes
@@ -68,8 +68,8 @@ namespace backend.Services
                         if (!isUserAuthorized)
                         {
                             isUserAuthorized = await _dbContext.ApplicationScopes
-                                .Where(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsAdminApproved)
-                                .FirstOrDefaultAsync() != null;
+                                .Where(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsAdminApproved == true)
+                                .AnyAsync();
                         }
 
                         // Admin Bypass: If user is a global admin, they are authorized for any trusted cross-app scope
@@ -89,7 +89,7 @@ namespace backend.Services
             // Remove all qualified scopes that weren't validated
             finalScopesList.RemoveAll(s => s.StartsWith("api://") && !validatedCrossScopes.Contains(s));
 
-            var adminApprovedScopes = clientScopes.Where(s => s.IsAdminApproved).Select(s => s.FullScopeName).ToList();
+            var adminApprovedScopes = clientScopes.Where(s => s.IsAdminApproved == true).Select(s => s.FullScopeName).ToList();
 
             // Include Admin Approved scopes in the user session
             foreach (var s in adminApprovedScopes)
@@ -129,7 +129,7 @@ namespace backend.Services
             foreach (var scope in userLevelScopes)
             {
                 // Verify this is not a Client-Only scope (those cannot be applied to users)
-                var isClientOnly = clientScopes.Any(s => (s.Name == scope || s.FullScopeName == scope) && s.IsClientOnly);
+                var isClientOnly = clientScopes.Any(s => (s.Name == scope || s.FullScopeName == scope) && s.IsClientOnly == true);
                 if (!isClientOnly)
                 {
                     claims.Add(new Claim(ClaimTypes.Role, scope));
@@ -184,7 +184,7 @@ namespace backend.Services
             
             // For Client Credentials, we ONLY allow scopes owned by this client that are marked IsClientOnly
             var clientOnlyScopes = await _dbContext.ApplicationScopes
-                .Where(s => s.ClientId == client.ClientId && s.IsClientOnly)
+                .Where(s => s.ClientId == client.ClientId && s.IsClientOnly == true)
                 .Select(s => s.FullScopeName)
                 .ToListAsync();
 
@@ -356,7 +356,7 @@ namespace backend.Services
                 if (!isUserAuthorized)
                 {
                     isUserAuthorized = await _dbContext.ApplicationScopes
-                        .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && (s.IsAdminApproved || s.IsClientOnly));
+                        .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && (s.IsAdminApproved == true || s.IsClientOnly == true));
                 }
 
                 if (!isUserAuthorized && user.Roles.Contains("admin"))
@@ -370,7 +370,7 @@ namespace backend.Services
             {
                 // 1. Check if the scope is Client-Only (Bypass user logic)
                 var isClientOnly = await _dbContext.ApplicationScopes
-                    .AnyAsync(s => s.ClientId == client.ClientId && (s.Name == scope || s.FullScopeName == scope) && s.IsClientOnly);
+                    .AnyAsync(s => s.ClientId == client.ClientId && (s.Name == scope || s.FullScopeName == scope) && s.IsClientOnly == true);
                 if (isClientOnly) return true;
 
                 // 2. Check User-specific assignments
@@ -381,7 +381,7 @@ namespace backend.Services
                 if (!isAuthorized)
                 {
                     isAuthorized = await _dbContext.ApplicationScopes
-                        .AnyAsync(s => s.ClientId == client.ClientId && (s.Name == scope || s.FullScopeName == scope) && s.IsAdminApproved);
+                        .AnyAsync(s => s.ClientId == client.ClientId && (s.Name == scope || s.FullScopeName == scope) && s.IsAdminApproved == true);
                 }
 
                 return isAuthorized;

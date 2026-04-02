@@ -52,8 +52,17 @@ namespace backend.Endpoints
             {
                 user.Id,
                 user.Email,
+                user.Name,
+                user.MobileNumber,
                 user.Roles,
-                ExternalIdentities = user.ExternalIdentities.ToDictionary(i => i.Provider, i => i.ProviderId)
+                ExternalIdentities = user.ExternalIdentities.Select(i => new {
+                    i.Provider,
+                    i.ProviderId,
+                    i.Sub,
+                    i.Name,
+                    i.Email,
+                    i.MobileNumber
+                }).ToList()
             });
         }
 

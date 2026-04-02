@@ -181,7 +181,7 @@ namespace backend.Endpoints
 
             try
             {
-                var scope = await _scopeService.CreateScopeAsync(data.ClientId, data.Name, data.Description, data.IsAdminApproved);
+                var scope = await _scopeService.CreateScopeAsync(data.ClientId, data.Name, data.Description, data.IsAdminApproved == true, data.IsClientOnly == true);
                 return new OkObjectResult(scope);
             }
             catch (Exception ex)
@@ -209,6 +209,7 @@ namespace backend.Endpoints
             public int RoleCount { get; set; }
             public int ScopeCount { get; set; }
             public int AutoGrantCount { get; set; }
+            public int ClientOnlyCount { get; set; }
             public int TrustCount { get; set; }
         }
 
@@ -235,7 +236,8 @@ namespace backend.Endpoints
                 ClientSecrets = c.ClientSecrets,
                 RoleCount = allRoles.Count(r => r.ClientId == c.ClientId),
                 ScopeCount = allScopes.Count(s => s.ClientId == c.ClientId),
-                AutoGrantCount = allScopes.Count(s => s.ClientId == c.ClientId && s.IsAdminApproved),
+                AutoGrantCount = allScopes.Count(s => s.ClientId == c.ClientId && s.IsAdminApproved == true),
+                ClientOnlyCount = allScopes.Count(s => s.ClientId == c.ClientId && s.IsClientOnly == true),
                 TrustCount = allTrusts.Count(t => t.RequestingClientId == c.ClientId)
             }).ToList();
 

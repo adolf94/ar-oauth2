@@ -132,7 +132,9 @@ export default function AdminUsers() {
         ]);
         
         const roles = rolesRes.data.map((r: any) => r.name);
-        const scopes = scopesRes.data.map((s: any) => s.name);
+        const scopes = scopesRes.data
+          .filter((s: any) => !s.isClientOnly)
+          .map((s: any) => s.name);
         
         // Combine and unique
         const combined = Array.from(new Set([...roles, ...scopes]));

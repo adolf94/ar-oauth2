@@ -13,8 +13,9 @@ interface AppModel {
   roleCount?: number;
   scopeCount?: number;
   autoGrantCount?: number;
+  clientOnlyCount?: number;
   trustCount?: number;
-  applicationScopes?: { id: string; name: string; fullScopeName: string; description?: string }[];
+  applicationScopes?: { id: string; name: string; fullScopeName: string; description?: string; isAdminApproved?: boolean; isClientOnly?: boolean }[];
 }
 
 export default function AdminApps() {
@@ -34,7 +35,7 @@ export default function AdminApps() {
 
   const [manageScopesApp, setManageScopesApp] = useState<AppModel | null>(null);
   const [scopesDialogOpen, setScopesDialogOpen] = useState(false);
-  const [newScope, setNewScope] = useState({ name: '', description: '', isAdminApproved: false });
+  const [newScope, setNewScope] = useState({ name: '', description: '', isAdminApproved: false, isClientOnly: false });
   const [addingScope, setAddingScope] = useState(false);
   const [appScopes, setAppScopes] = useState<any[]>([]);
 
@@ -248,9 +249,10 @@ export default function AdminApps() {
         clientId: manageScopesApp.clientId,
         name: newScope.name,
         description: newScope.description,
-        isAdminApproved: newScope.isAdminApproved
+        isAdminApproved: newScope.isAdminApproved,
+        isClientOnly: newScope.isClientOnly
       });
-      setNewScope({ name: '', description: '', isAdminApproved: false });
+      setNewScope({ name: '', description: '', isAdminApproved: false, isClientOnly: false });
       // Refresh
       const res = await api.get(`/manage/scopes?client_id=${manageScopesApp.clientId}`);
       setAppScopes(res.data);
@@ -569,6 +571,11 @@ export default function AdminApps() {
                           <Chip size="small" label={`${row.autoGrantCount} Auto`} color="success" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
                         </Tooltip>
                       )}
+                      {row.clientOnlyCount !== undefined && row.clientOnlyCount > 0 && (
+                        <Tooltip title="Machine-to-Machine (Client-Only) Scopes">
+                          <Chip size="small" label={`${row.clientOnlyCount} M2M`} color="warning" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                        </Tooltip>
+                      )}
                       {row.trustCount !== undefined && row.trustCount > 0 && (
                         <Tooltip title="Cross-App trust permissions">
                           <Chip size="small" label={`${row.trustCount} Trusts`} color="primary" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} icon={<SyncIcon sx={{ fontSize: '10px !important' }} />} />
@@ -652,11 +659,23 @@ export default function AdminApps() {
                         <TableCell><code>{scope.name}</code></TableCell>
                         <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{scope.fullScopeName}</Typography></TableCell>
                         <TableCell>
-                          {scope.isAdminApproved ? (
-                            <Chip size="small" label="Auto-grant" color="success" icon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />} />
-                          ) : (
-                            <Chip size="small" label="Manual" variant="outlined" icon={<PersonIcon sx={{ fontSize: '14px !important' }} />} />
-                          )}
+                          <Stack direction="row" spacing={1}>
+                            {scope.isAdminApproved && (
+                              <Tooltip title="Auto-granted to all users">
+                                <Chip size="small" label="Auto-grant" color="success" icon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />} />
+                              </Tooltip>
+                            )}
+                            {scope.isClientOnly && (
+                              <Tooltip title="Machine-to-machine only (cannot be assigned to users)">
+                                <Chip size="small" label="Machine" color="warning" icon={<SyncIcon sx={{ fontSize: '14px !important' }} />} />
+                              </Tooltip>
+                            )}
+                            {!scope.isAdminApproved && !scope.isClientOnly && (
+                              <Tooltip title="Must be manually assigned to users">
+                                <Chip size="small" label="Manual" variant="outlined" icon={<PersonIcon sx={{ fontSize: '14px !important' }} />} />
+                              </Tooltip>
+                            )}
+                          </Stack>
                         </TableCell>
                         <TableCell>{scope.description}</TableCell>
                         <TableCell align="right">
@@ -694,22 +713,40 @@ export default function AdminApps() {
                     onChange={(e) => setNewScope({ ...newScope, description: e.target.value })}
                     placeholder="Optional description"
                   />
-                  <FormControlLabel
-                    control={
-                      <Switch 
-                        checked={newScope.isAdminApproved} 
-                        onChange={(e) => setNewScope({ ...newScope, isAdminApproved: e.target.checked })} 
-                      />
-                    }
-                    label={
-                      <Box>
-                        <Typography variant="body2">Admin Approved (Auto-grant)</Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                          If enabled, this scope is automatically given to ALL users of this application.
-                        </Typography>
-                      </Box>
-                    }
-                  />
+                  <Stack direction="row" spacing={3}>
+                    <FormControlLabel
+                      control={
+                        <Switch 
+                          checked={newScope.isAdminApproved} 
+                          onChange={(e) => setNewScope({ ...newScope, isAdminApproved: e.target.checked, isClientOnly: e.target.checked ? false : newScope.isClientOnly })} 
+                        />
+                      }
+                      label={
+                        <Box>
+                          <Typography variant="body2">Admin Approved (Auto-grant)</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            Automatically given to ALL users of this app.
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch 
+                          checked={newScope.isClientOnly} 
+                          onChange={(e) => setNewScope({ ...newScope, isClientOnly: e.target.checked, isAdminApproved: e.target.checked ? false : newScope.isAdminApproved })} 
+                        />
+                      }
+                      label={
+                        <Box>
+                          <Typography variant="body2">Client-Only (M2M)</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            Only for client-to-client flows. Users cannot request this.
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                  </Stack>
                   <Button 
                     variant="contained" 
                     onClick={handleAddScope}
