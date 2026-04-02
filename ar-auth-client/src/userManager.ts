@@ -41,7 +41,7 @@ export const getUserManager = (): UserManager => {
   return _userManager;
 };
 
-export const refreshAccessToken = async (): Promise<OidcUser | null> => {
+export const refreshAccessToken = async (scope?: string): Promise<OidcUser | null> => {
   const userManager = getUserManager();
   const user = await userManager.getUser();
 
@@ -61,6 +61,7 @@ export const refreshAccessToken = async (): Promise<OidcUser | null> => {
       grant_type: 'refresh_token',
       refresh_token: user.refresh_token,
       client_id: userManager.settings.client_id,
+      ...(scope ? { scope } : {}),
     });
 
     const response = await fetch(tokenEndpoint, {

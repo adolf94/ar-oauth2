@@ -1,4 +1,4 @@
-# @atlas-rig/auth
+# @adolf94/ar-auth-client
 
 A reusable OIDC client SDK for ArGo applications, built on top of `oidc-client-ts`.
 
@@ -12,7 +12,7 @@ A reusable OIDC client SDK for ArGo applications, built on top of `oidc-client-t
 ## Installation
 
 ```bash
-npm install @atlas-rig/auth
+npm install @adolf94/ar-auth-client
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ npm install @atlas-rig/auth
 Wrap your application with the `AuthProvider` and provide your OIDC configuration.
 
 ```tsx
-import { AuthProvider } from '@atlas-rig/auth';
+import { AuthProvider } from '@adolf94/ar-auth-client';
 
 const authConfig = {
   authority: 'https://auth.example.com',
@@ -43,7 +43,7 @@ function App() {
 ### 2. Use the Auth Hook
 
 ```tsx
-import { useAuth } from '@atlas-rig/auth';
+import { useAuth } from '@adolf94/ar-auth-client';
 
 function YourComponent() {
   const { user, login, logout, isAuthenticated } = useAuth();
@@ -59,9 +59,56 @@ function YourComponent() {
     </div>
   );
 }
+
+### 3. Handling Login Rejections
+
+The `login` function returns a promise that rejects if the process is cancelled or fails. This is especially useful for detecting when a user closes the login popup.
+
+```tsx
+const { login } = useAuth();
+const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+const handleLogin = async () => {
+  setIsLoggingIn(true);
+  try {
+    await login();
+  } catch (error: any) {
+    if (error.message === 'Popup closed') {
+      alert('Login was cancelled by the user.');
+    } else {
+      console.error('Authentication Error:', error);
+    }
+  } finally {
+    setIsLoggingIn(false);
+  }
+};
+```
+
+### 4. Fetching Tokens for Specific Scopes (Downscoping)
+
+If you need an access token with a specific subset of scopes (e.g., for a different microservice), use `getAccessToken`. This will automatically check if your current token is valid for that scope and perform a silent refresh if needed.
+
+```tsx
+const { getAccessToken } = useAuth();
+
+const callApi = async () => {
+    // Requests a token specifically with 'products:read' scope
+    const token = await getAccessToken('products:read');
+    
+    if (token) {
+        const response = await fetch('https://api.example.com/products', {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        // ...
+    }
+};
+```
 ```
 
 ## Technical Details
+
+
+
 
 ### Manual Token Refresh
 

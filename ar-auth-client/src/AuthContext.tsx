@@ -18,7 +18,9 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   accessToken: string | null;
+  accessTokens: Record<string, { token: string; expiresAt: number }>;
   hasScope: (scope: string) => boolean;
+  getAccessToken: (scope?: string) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -70,6 +72,7 @@ export interface AuthProviderProps {
 export const AuthProvider = ({ children, config }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [accessTokens, setAccessTokens] = useState<Record<string, { token: string; expiresAt: number }>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   // Ensure UserManager is initialized
@@ -111,8 +114,7 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
         }
 
         if (oidcUser && !oidcUser.expired) {
-          setUser(mapOidcUser(oidcUser, config.clientId));
-          setAccessToken(oidcUser.access_token);
+          updateUserState(oidcUser);
         }
       } catch (e) {
         console.error('Failed to restore session:', e);
@@ -123,14 +125,14 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
     restore();
 
     const onUserLoaded = (oidcUser: OidcUser) => {
-      setUser(mapOidcUser(oidcUser, config.clientId));
-      setAccessToken(oidcUser.access_token);
+      updateUserState(oidcUser);
     };
 
     const onSilentRenewError = (error: Error) => {
       console.error('Silent renew failed:', error);
       setUser(null);
       setAccessToken(null);
+      setAccessTokens({});
     };
 
     userManager.events.addUserLoaded(onUserLoaded);
@@ -154,10 +156,14 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
       }
 
       const oidcUser = await userManager.signinPopup();
-      setUser(mapOidcUser(oidcUser, config.clientId));
-      setAccessToken(oidcUser.access_token);
-    } catch (error) {
-      console.error('Login failed:', error);
+      updateUserState(oidcUser);
+    } catch (error: any) {
+      if (error?.message === 'Popup closed') {
+        console.warn('Authentication popup was closed by the user.');
+      } else {
+        console.error('Login failed:', error);
+      }
+      // Re-throw so the 3rd party app can catch it
       throw error;
     }
   };
@@ -166,6 +172,101 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
     userManager.removeUser();
     setUser(null);
     setAccessToken(null);
+    setAccessTokens({});
+
+    // Clear session storage cache
+    const prefix = `ar_auth_token_${config.clientId}_`;
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        sessionStorage.removeItem(key);
+        i--; // Adjust index after removal
+      }
+    }
+  };
+
+  const updateUserState = (oidcUser: OidcUser) => {
+    const mappedUser = mapOidcUser(oidcUser, config.clientId);
+    
+    setUser(prev => {
+      if (!prev || prev.userId !== mappedUser.userId) return mappedUser;
+      
+      // Merge scopes and roles
+      const mergedScopes = Array.from(new Set([...prev.scopes, ...mappedUser.scopes]));
+      const mergedRoles = Array.from(new Set([...(prev.roles || []), ...(mappedUser.roles || [])]));
+      
+      return {
+        ...mappedUser,
+        scopes: mergedScopes,
+        roles: mergedRoles
+      };
+    });
+
+    setAccessToken(oidcUser.access_token);
+    
+    setAccessTokens(prev => ({
+      ...prev,
+      [oidcUser.scope || config.scope]: {
+        token: oidcUser.access_token,
+        expiresAt: oidcUser.expires_at || 0
+      }
+    }));
+
+    // Cache in session storage for scope-specific reuse
+    const storageKey = `ar_auth_token_${config.clientId}_${oidcUser.scope || config.scope}`;
+    sessionStorage.setItem(storageKey, JSON.stringify({
+      token: oidcUser.access_token,
+      expiresAt: oidcUser.expires_at
+    }));
+  };
+  const getAccessToken = async (scope?: string): Promise<string | null> => {
+    const currentScope = scope || config.scope;
+    
+    // 1. Check React state (Fastest)
+    const stateCached = accessTokens[currentScope];
+    if (stateCached && stateCached.expiresAt > (Date.now() / 1000) + 30) {
+      return stateCached.token;
+    }
+
+    const storageKey = `ar_auth_token_${config.clientId}_${currentScope}`;
+
+    // 2. Check Session Storage Cache (Persistent across reloads)
+    const stored = sessionStorage.getItem(storageKey);
+    if (stored) {
+      try {
+        const { token, expiresAt } = JSON.parse(stored);
+        if (expiresAt > (Date.now() / 1000) + 30) {
+          // Sync back to React state for next call
+          setAccessTokens(prev => ({ ...prev, [currentScope]: { token, expiresAt } }));
+          return token;
+        }
+      } catch (e) {
+        sessionStorage.removeItem(storageKey);
+      }
+    }
+
+    let oidcUser = await userManager.getUser();
+
+    if (scope && oidcUser && !oidcUser.expired) {
+      const userScopes = oidcUser.scope?.split(' ') || [];
+      if (!userScopes.includes(scope)) {
+        oidcUser = null; // Forces refresh with new scope
+      }
+    }
+
+    if (!oidcUser || oidcUser.expired) {
+      try {
+        oidcUser = await refreshAccessToken(scope);
+        if (oidcUser) {
+          updateUserState(oidcUser);
+        }
+      } catch (err) {
+        console.error('Failed to get access token:', err);
+        return null;
+      }
+    }
+
+    return oidcUser?.access_token ?? null;
   };
 
   const hasScope = (scope: string) => {
@@ -178,7 +279,7 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, isLoading, accessToken, hasScope }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, isLoading, accessToken, accessTokens, hasScope, getAccessToken }}>
       {children}
     </AuthContext.Provider>
   );
