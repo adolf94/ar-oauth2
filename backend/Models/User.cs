@@ -7,6 +7,10 @@ namespace backend.Models
     {
         public string Provider { get; set; } = string.Empty;
         public string ProviderId { get; set; } = string.Empty;
+        public string? Sub { get; set; }
+        public string? Name { get; set; }
+        public string? MobileNumber { get; set; }
+        public string? Email { get; set; }
     }
 
     public class UserIdentityConverter : Newtonsoft.Json.JsonConverter
@@ -39,8 +43,8 @@ namespace backend.Models
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string Email { get; set; } = string.Empty;
-				public string Name { get; set; }
-				public string? MobileNumber { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? MobileNumber { get; set; }
         public List<string> Roles { get; set; } = new();
 
         [Newtonsoft.Json.JsonConverter(typeof(UserIdentityConverter))]

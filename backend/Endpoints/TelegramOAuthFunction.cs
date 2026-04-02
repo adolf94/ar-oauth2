@@ -221,15 +221,18 @@ namespace backend.Endpoints
             // 3. Extract Claims from ID Token
             var handler = new JwtSecurityTokenHandler();
             var idTokenJson = handler.ReadJwtToken(tokenData.IdToken);
-            var telegramId = idTokenJson.Subject; // 'sub' claim
-            var telegramPhone = idTokenJson.Claims.FirstOrDefault(c => c.Type == "phone_number")?.Value;
-            var telegramFirstName = idTokenJson.Claims.FirstOrDefault(c => c.Type == "given_name")?.Value;
-            var telegramLastName = idTokenJson.Claims.FirstOrDefault(c => c.Type == "family_name")?.Value;
-            var telegramName = idTokenJson.Claims.FirstOrDefault(c => c.Type == "name")?.Value 
+            var claims = idTokenJson.Claims.ToList();
+
+            var telegramSub = idTokenJson.Subject; // 'sub' claim
+            var telegramId = claims.FirstOrDefault(c => c.Type == "id")?.Value ?? telegramSub;
+            var telegramEmail = claims.FirstOrDefault(c => c.Type == "email")?.Value;
+            var telegramPhone = claims.FirstOrDefault(c => c.Type == "phone_number")?.Value;
+            var telegramFirstName = claims.FirstOrDefault(c => c.Type == "given_name")?.Value;
+            var telegramLastName = claims.FirstOrDefault(c => c.Type == "family_name")?.Value;
+            var telegramName = claims.FirstOrDefault(c => c.Type == "name")?.Value 
                   ?? (string.IsNullOrEmpty(telegramLastName) ? telegramFirstName : $"{telegramFirstName} {telegramLastName}");
 
             // 4. Map Telegram User
-            var idBasedEmail = $"{telegramId}@telegram.org";
             var user = await _userService.GetByExternalIdentityAsync("telegram", telegramId);
             
             // Link Mode: If we have a link token, we MUST link to that user
@@ -247,36 +250,38 @@ namespace backend.Endpoints
                     var targetUserId = linkPrincipal.FindFirst("link_user_id")?.Value;
                     if (!string.IsNullOrEmpty(targetUserId)) {
                         _logger.LogInformation("Linking Telegram {Id} to user {TargetUserId} via link_token", telegramId, targetUserId);
-                        await _userService.LinkExternalIdentityAsync(targetUserId, "telegram", telegramId);
+                        await _userService.LinkExternalIdentityAsync(targetUserId, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone);
                         user = await _userService.GetByIdAsync(targetUserId);
                     }
                 } catch (Exception ex) {
                     _logger.LogWarning(ex, "Invalid link_token in Telegram callback.");
                 }
             }
+
             if (user == null)
             {
-                user = await _userService.GetByEmailAsync(idBasedEmail);
+                // Fallback: Check by real email (if provided)
+                if (!string.IsNullOrEmpty(telegramEmail))
+                {
+                    user = await _userService.GetByEmailAsync(telegramEmail);
+                }
+
                 if (user == null)
                 {
-                    _logger.LogInformation("Creating new Telegram user {Id}", telegramId);
-                    user = await _userService.CreateUserAsync(idBasedEmail, telegramPhone, new List<string> { "unregistered" }, "telegram", telegramId, telegramName);
+                    _logger.LogInformation("Creating new Telegram user with Id {Id} and Sub {Sub}", telegramId, telegramSub);
+                    user = await _userService.CreateUserAsync(telegramEmail ?? string.Empty, telegramPhone, new List<string> { "unregistered" }, "telegram", telegramId, telegramName, telegramSub, telegramEmail, telegramPhone);
+                }
+                else
+                {
+                    // If user found by email, link the telegram identity
+                    _logger.LogInformation("Found existing user by email {Email}, linking Telegram {Id}", user.Email, telegramId);
+                    await _userService.LinkExternalIdentityAsync(user.Id, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone);
                 }
             }
 
-            // Only set the name from Telegram if there is no Name saved yet
-            if (string.IsNullOrEmpty(user.Name) && !string.IsNullOrEmpty(telegramName))
-            {
-                _logger.LogInformation("Setting name for user {UserId} from Telegram: {NewName}", user.Id, telegramName);
-                await _userService.UpdateUserAsync(user.Id, telegramPhone ?? user.MobileNumber, user.Roles, telegramName);
-                user.Name = telegramName;
-                user.MobileNumber = telegramPhone ?? user.MobileNumber;
-            }
-            else if (!string.IsNullOrEmpty(telegramPhone) && string.IsNullOrEmpty(user.MobileNumber))
-            {
-                await _userService.UpdateUserAsync(user.Id, telegramPhone, user.Roles);
-                user.MobileNumber = telegramPhone;
-            }
+            // Sync user details from Telegram (stores everything in ExternalIdentities + some top-level sync)
+            await _userService.UpdateExternalIdentityDetailsAsync(user.Id, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone);
+            user = await _userService.GetByIdAsync(user.Id) ?? user; // Refresh local user object
 
             // 5. Generate Atlas Rig code
             var authCode = await _authCodeService.CreateAuthCodeAsync(

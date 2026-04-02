@@ -230,8 +230,7 @@ namespace backend.Endpoints
             var googleEmail = payload.Email;
             var googleSub = payload.Subject;
             var googleName = payload.Name;
-            var idBasedEmail = $"{googleSub}@accounts.google.com";
-            
+            // 4. Map Google User
             var user = await _userService.GetByExternalIdentityAsync("google", googleSub);
             
             // Link Mode: If we have a link token, we MUST link to that user
@@ -249,7 +248,7 @@ namespace backend.Endpoints
                     var targetUserId = linkPrincipal.FindFirst("link_user_id")?.Value;
                     if (!string.IsNullOrEmpty(targetUserId)) {
                         _logger.LogInformation("Linking Google {Sub} to user {TargetUserId} via link_token", googleSub, targetUserId);
-                        await _userService.LinkExternalIdentityAsync(targetUserId, "google", googleSub);
+                        await _userService.LinkExternalIdentityAsync(targetUserId, "google", googleSub, googleSub, googleName, googleEmail);
                         user = await _userService.GetByIdAsync(targetUserId);
                     }
                 } catch (Exception ex) {
@@ -259,26 +258,27 @@ namespace backend.Endpoints
 
             if (user == null)
             {
-                // Also check by the ID-based email for backward compatibility or migration
-                user = await _userService.GetByEmailAsync(idBasedEmail);
-                
-                if (user == null)
+                // Fallback: Check by the real Google email
+                if (!string.IsNullOrEmpty(googleEmail))
                 {
-                    // Fallback: Check by the real Google email
                     user = await _userService.GetByEmailAsync(googleEmail);
-                    if (user != null)
-                    {
-                        _logger.LogInformation("Found existing user by real email {Email} — linking to Google ID {Sub}", googleEmail, googleSub);
-                        await _userService.LinkExternalIdentityAsync(user.Id, "google", googleSub);
-                    }
                 }
 
                 if (user == null)
                 {
-                    _logger.LogInformation("User {Sub} not found — creating user with Google ID-based email.", googleSub);
-                    user = await _userService.CreateUserAsync(idBasedEmail, null, new List<string> { "unregistered" }, "google", googleSub, googleName);
+                    _logger.LogInformation("User {Sub} not found — creating new user.", googleSub);
+                    user = await _userService.CreateUserAsync(googleEmail ?? string.Empty, null, new List<string> { "unregistered" }, "google", googleSub, googleName, googleSub, googleEmail);
+                }
+                else
+                {
+                    // If user found by email, link to Google ID
+                    _logger.LogInformation("Found existing user by email {Email} — linking to Google ID {Sub}", googleEmail, googleSub);
+                    await _userService.LinkExternalIdentityAsync(user.Id, "google", googleSub, googleSub, googleName, googleEmail);
                 }
             }
+
+            // Always update identity details
+            await _userService.UpdateExternalIdentityDetailsAsync(user.Id, "google", googleSub, googleSub, googleName, googleEmail);
 
             // Always use the name from Google
             if (!string.IsNullOrEmpty(googleName) && (user.Name != googleName))

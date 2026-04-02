@@ -34,7 +34,15 @@ namespace backend.Services
         {
             var key = _rsaKeyService.GetSigningKey();
 
-            var finalScopesList = scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+            // 0. Fetch scope definitions to verify Client-Only restriction
+            var clientScopes = await _dbContext.ApplicationScopes
+                .Where(s => s.ClientId == client.ClientId)
+                .ToListAsync();
+
+            // Filter out any Client-Only scopes (User sessions cannot carry client-only permissions)
+            var finalScopesList = scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(s => !clientScopes.Any(cs => (cs.Name == s || cs.FullScopeName == s) && cs.IsClientOnly))
+                .ToList();
             
             // 1. Resolve and Validate Cross-App Scopes
             var qualifiedScopes = finalScopesList.Where(s => s.StartsWith("api://")).ToList();
@@ -81,13 +89,10 @@ namespace backend.Services
             // Remove all qualified scopes that weren't validated
             finalScopesList.RemoveAll(s => s.StartsWith("api://") && !validatedCrossScopes.Contains(s));
 
-            // 2. Fetch Admin Approved (Auto-granted) scopes for the Requesting Client
-            var autoGrantedScopes = await _dbContext.ApplicationScopes
-                .Where(s => s.ClientId == client.ClientId && s.IsAdminApproved)
-                .Select(s => s.FullScopeName)
-                .ToListAsync();
+            var adminApprovedScopes = clientScopes.Where(s => s.IsAdminApproved).Select(s => s.FullScopeName).ToList();
 
-            foreach (var s in autoGrantedScopes)
+            // Include Admin Approved scopes in the user session
+            foreach (var s in adminApprovedScopes)
             {
                 if (!finalScopesList.Contains(s))
                     finalScopesList.Add(s);
@@ -110,21 +115,29 @@ namespace backend.Services
                 claims.Add(new Claim("sid", sid));
             }
 
+
             // 1. Global Roles
             foreach (var role in user.Roles)
                 claims.Add(new Claim(ClaimTypes.Role, role));
 
-            // 2. App-Specific Scopes (Manual Assignments for current app)
-            var appSpecificScopes = await _dbContext.UserClientScopes
+            // 2. App-Specific Scopes (Manual User-level assignments)
+            var userLevelScopes = await _dbContext.UserClientScopes
                 .Where(ucs => ucs.UserId == user.Id && ucs.ClientId == client.ClientId)
                 .Select(ucs => ucs.Scope)
                 .ToListAsync();
 
-            foreach (var scope in appSpecificScopes)
-                claims.Add(new Claim(ClaimTypes.Role, scope));
+            foreach (var scope in userLevelScopes)
+            {
+                // Verify this is not a Client-Only scope (those cannot be applied to users)
+                var isClientOnly = clientScopes.Any(s => (s.Name == scope || s.FullScopeName == scope) && s.IsClientOnly);
+                if (!isClientOnly)
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, scope));
+                }
+            }
 
-            // 3. App-Specific Scopes (Auto-granted for current app)
-            foreach (var scope in autoGrantedScopes)
+            // 3. Admin Approved Scopes as Roles (Auto-granted to users)
+            foreach (var scope in adminApprovedScopes)
             {
                 if (!claims.Any(c => c.Type == ClaimTypes.Role && c.Value == scope))
                     claims.Add(new Claim(ClaimTypes.Role, scope));
@@ -156,6 +169,64 @@ namespace backend.Services
                 Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.UtcNow.AddMinutes(5),
                 Issuer = Issuer,
+                SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
+            };
+
+            var handler = new JwtSecurityTokenHandler();
+            return (handler.WriteToken(handler.CreateToken(tokenDescriptor)), finalScopesString);
+        }
+
+        // ── Client Access Token (Machine-to-Machine) ────────────────
+
+        public async Task<(string Token, string Scopes)> GenerateClientAccessToken(Client client, string requestedScopes)
+        {
+            var key = _rsaKeyService.GetSigningKey();
+            
+            // For Client Credentials, we ONLY allow scopes owned by this client that are marked IsClientOnly
+            var clientOnlyScopes = await _dbContext.ApplicationScopes
+                .Where(s => s.ClientId == client.ClientId && s.IsClientOnly)
+                .Select(s => s.FullScopeName)
+                .ToListAsync();
+
+            var finalScopesList = new List<string>();
+            if (string.IsNullOrEmpty(requestedScopes))
+            {
+                // If no specific scopes requested, grant all Client-Only scopes
+                finalScopesList.AddRange(clientOnlyScopes);
+            }
+            else
+            {
+                var requestedList = requestedScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var s in requestedList)
+                {
+                    if (clientOnlyScopes.Contains(s))
+                        finalScopesList.Add(s);
+                }
+            }
+
+            var finalScopesString = string.Join(' ', finalScopesList.Distinct());
+
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub,   client.ClientId), // Subject is the client itself
+                new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
+                new Claim("client_id",                   client.ClientId),
+                new Claim("scope",                       finalScopesString),
+                new Claim("grant_type",                  "client_credentials")
+            };
+
+            // Add client-only scopes as roles for the client principal
+            foreach (var scope in finalScopesList)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, scope));
+            }
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddHours(1),
+                Issuer = Issuer,
+                Audience = client.ClientId,
                 SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
             };
 
@@ -252,6 +323,7 @@ namespace backend.Services
             }
 
 
+
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
@@ -284,7 +356,7 @@ namespace backend.Services
                 if (!isUserAuthorized)
                 {
                     isUserAuthorized = await _dbContext.ApplicationScopes
-                        .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsAdminApproved);
+                        .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && (s.IsAdminApproved || s.IsClientOnly));
                 }
 
                 if (!isUserAuthorized && user.Roles.Contains("admin"))
@@ -296,9 +368,16 @@ namespace backend.Services
             }
             else
             {
+                // 1. Check if the scope is Client-Only (Bypass user logic)
+                var isClientOnly = await _dbContext.ApplicationScopes
+                    .AnyAsync(s => s.ClientId == client.ClientId && (s.Name == scope || s.FullScopeName == scope) && s.IsClientOnly);
+                if (isClientOnly) return true;
+
+                // 2. Check User-specific assignments
                 var isAuthorized = await _dbContext.UserClientScopes
                     .AnyAsync(ucs => ucs.UserId == user.Id && ucs.ClientId == client.ClientId && ucs.Scope == scope);
 
+                // 3. Fallback to Admin-Approved scopes for users
                 if (!isAuthorized)
                 {
                     isAuthorized = await _dbContext.ApplicationScopes

@@ -220,6 +220,35 @@ namespace backend.Endpoints
                 });
             }
 
+            // ── client_credentials grant ────────────────────────────────────────────
+            if (tokenReq.grant_type == "client_credentials")
+            {
+                var client = await _clientService.GetByClientIdAsync(tokenReq.client_id);
+                if (client == null)
+                    return new UnauthorizedObjectResult(new { error = "invalid_client" });
+
+                // Secret Validation is Mandatory for client_credentials
+                if (client.ClientSecrets == null || !client.ClientSecrets.Any())
+                {
+                    return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client has no secrets configured." });
+                }
+
+                if (string.IsNullOrEmpty(tokenReq.client_secret) || !_clientService.VerifyClientSecret(tokenReq.client_secret, client.ClientSecrets))
+                {
+                    return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed." });
+                }
+
+                var (accessToken, grantedScopes) = await _tokenService.GenerateClientAccessToken(client, tokenReq.scope);
+
+                return new OkObjectResult(new TokenResponse
+                {
+                    AccessToken = accessToken,
+                    ExpiresIn   = 3600, // 1 hour for machine tokens
+                    TokenType   = "Bearer",
+                    Scope       = grantedScopes
+                });
+            }
+
             return new BadRequestObjectResult(new { error = "unsupported_grant_type" });
         }
     }
