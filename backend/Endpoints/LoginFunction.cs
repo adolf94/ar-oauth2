@@ -68,7 +68,35 @@ namespace backend.Endpoints
                     });
 
                     targetEmail = payload.Email;
+                    var googleName = payload.Name;
                     _logger.LogInformation("Successfully validated Google ID token for {Email}", targetEmail);
+
+                    var user = await _userService.GetByEmailAsync(targetEmail);
+                    if (user == null)
+                    {
+                        _logger.LogInformation("User {Email} not found — creating user from Google provisioning.", targetEmail);
+                        user = await _userService.CreateUserAsync(targetEmail, null, new System.Collections.Generic.List<string> { "user" }, "google", payload.Subject, googleName);
+                    }
+                    
+                    // Always use the name from Google
+                    if (!string.IsNullOrEmpty(googleName) && user.Name != googleName)
+                    {
+                        await _userService.UpdateUserAsync(user.Id, user.MobileNumber, user.Roles, googleName);
+                        user.Name = googleName;
+                    }
+
+                    // Generate authorization code
+                    var authCode = await _authCodeService.CreateAuthCodeAsync(
+                        loginReq.client_id,
+                        user.Id,
+                        loginReq.redirect_uri,
+                        loginReq.code_challenge,
+                        loginReq.code_challenge_method,
+                        loginReq.scope
+                    );
+
+                    // Return code + state so the SPA can redirect to the redirect_uri
+                    return new OkObjectResult(new { code = authCode.Id, state = loginReq.state });
                 }
                 catch (InvalidJwtException ex)
                 {
@@ -80,27 +108,6 @@ namespace backend.Endpoints
             {
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "google_id_token is required." });
             }
-
-            // Look up the user by email. Auto-create a stub user for development/testing if not found.
-            var user = await _userService.GetByEmailAsync(targetEmail);
-            if (user == null)
-            {
-                _logger.LogInformation("User {Email} not found — creating stub user for testing/Google auto-provisioning.", targetEmail);
-                user = await _userService.CreateUserAsync(targetEmail, null, new System.Collections.Generic.List<string> { "user" });
-            }
-
-            // Generate authorization code
-            var authCode = await _authCodeService.CreateAuthCodeAsync(
-                loginReq.client_id,
-                user.Id,
-                loginReq.redirect_uri,
-                loginReq.code_challenge,
-                loginReq.code_challenge_method,
-                loginReq.scope
-            );
-
-            // Return code + state so the SPA can redirect to the redirect_uri
-            return new OkObjectResult(new { code = authCode.Id, state = loginReq.state });
         }
     }
 }

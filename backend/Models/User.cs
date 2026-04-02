@@ -39,7 +39,8 @@ namespace backend.Models
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string Email { get; set; } = string.Empty;
-        public string? MobileNumber { get; set; }
+				public string Name { get; set; }
+				public string? MobileNumber { get; set; }
         public List<string> Roles { get; set; } = new();
 
         [Newtonsoft.Json.JsonConverter(typeof(UserIdentityConverter))]

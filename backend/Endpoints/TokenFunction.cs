@@ -52,7 +52,8 @@ namespace backend.Endpoints
                     client_secret = form["client_secret"].ToString() ?? string.Empty,
                     redirect_uri  = form["redirect_uri"].ToString()  ?? string.Empty,
                     code_verifier = form["code_verifier"].ToString() ?? string.Empty,
-                    refresh_token = form["refresh_token"].ToString() ?? string.Empty
+                    refresh_token = form["refresh_token"].ToString() ?? string.Empty,
+                    scope         = form["scope"].ToString()         ?? string.Empty
                 };
             }
             else
@@ -100,11 +101,33 @@ namespace backend.Endpoints
 
                 var sid = Guid.NewGuid().ToString();
                 
-                var (accessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, validCode.Scopes, sid: sid);
-                var refreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id, client.ClientId, grantedScopes, sid: sid);
+                var scopesToUse = validCode.Scopes;
+                if (!string.IsNullOrEmpty(tokenReq.scope))
+                {
+                    var requestedScopes = tokenReq.scope.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    var authorizedByCode = validCode.Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+                    
+                    var verifiedScopes = new List<string>();
+                    foreach (var s in requestedScopes)
+                    {
+                        if (authorizedByCode.Contains(s) || await _tokenService.IsScopeAuthorizedAsync(user, client, s))
+                        {
+                            verifiedScopes.Add(s);
+                        }
+                        else
+                        {
+                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not allowed for this client or user." });
+                        }
+                    }
+                    scopesToUse = string.Join(' ', verifiedScopes.Distinct());
+                    _logger.LogInformation("Using specific scopes for access token: {Scopes}", scopesToUse);
+                }
+
+                var (accessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, scopesToUse, sid: sid);
+                var refreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id, client.ClientId, validCode.Scopes, sid: sid);
                 
                 string? idToken = null;
-                if (validCode.Scopes.Contains("openid"))
+                if (scopesToUse.Contains("openid"))
                 {
                    idToken = _tokenService.GenerateIdToken(user, client, nonce: "", sid: sid);
                 }
@@ -153,7 +176,29 @@ namespace backend.Endpoints
                 var sid = storedToken.Sid;
                 if (string.IsNullOrEmpty(sid)) sid = Guid.NewGuid().ToString();
 
-                var (newAccessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, storedToken.Scopes, sid: sid);
+                var scopesToUse = storedToken.Scopes;
+                if (!string.IsNullOrEmpty(tokenReq.scope))
+                {
+                    var requestedScopes = tokenReq.scope.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    var authorizedByToken = storedToken.Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+                    
+                    var verifiedScopes = new List<string>();
+                    foreach (var s in requestedScopes)
+                    {
+                        if (authorizedByToken.Contains(s) || await _tokenService.IsScopeAuthorizedAsync(user, client, s))
+                        {
+                            verifiedScopes.Add(s);
+                        }
+                        else
+                        {
+                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not allowed for this client or user." });
+                        }
+                    }
+                    scopesToUse = string.Join(' ', verifiedScopes.Distinct());
+                    _logger.LogInformation("Using specific scopes for refresh-based access token: {Scopes}", scopesToUse);
+                }
+
+                var (newAccessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, scopesToUse, sid: sid);
                 var newRefreshToken = await _tokenService.RotateRefreshTokenAsync(storedToken, sid: sid);
 
 

@@ -229,6 +229,7 @@ namespace backend.Endpoints
 
             var googleEmail = payload.Email;
             var googleSub = payload.Subject;
+            var googleName = payload.Name;
             var idBasedEmail = $"{googleSub}@accounts.google.com";
             
             var user = await _userService.GetByExternalIdentityAsync("google", googleSub);
@@ -275,8 +276,16 @@ namespace backend.Endpoints
                 if (user == null)
                 {
                     _logger.LogInformation("User {Sub} not found — creating user with Google ID-based email.", googleSub);
-                    user = await _userService.CreateUserAsync(idBasedEmail, null, new List<string> { "unregistered" }, "google", googleSub);
+                    user = await _userService.CreateUserAsync(idBasedEmail, null, new List<string> { "unregistered" }, "google", googleSub, googleName);
                 }
+            }
+
+            // Always use the name from Google
+            if (!string.IsNullOrEmpty(googleName) && (user.Name != googleName))
+            {
+                _logger.LogInformation("Updating name for user {UserId} from Google: {OldName} -> {NewName}", user.Id, user.Name, googleName);
+                await _userService.UpdateUserAsync(user.Id, user.MobileNumber, user.Roles, googleName);
+                user.Name = googleName;
             }
 
             // 4. Generate Atlas Rig code

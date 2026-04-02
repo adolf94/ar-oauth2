@@ -223,6 +223,10 @@ namespace backend.Endpoints
             var idTokenJson = handler.ReadJwtToken(tokenData.IdToken);
             var telegramId = idTokenJson.Subject; // 'sub' claim
             var telegramPhone = idTokenJson.Claims.FirstOrDefault(c => c.Type == "phone_number")?.Value;
+            var telegramFirstName = idTokenJson.Claims.FirstOrDefault(c => c.Type == "given_name")?.Value;
+            var telegramLastName = idTokenJson.Claims.FirstOrDefault(c => c.Type == "family_name")?.Value;
+            var telegramName = idTokenJson.Claims.FirstOrDefault(c => c.Type == "name")?.Value 
+                  ?? (string.IsNullOrEmpty(telegramLastName) ? telegramFirstName : $"{telegramFirstName} {telegramLastName}");
 
             // 4. Map Telegram User
             var idBasedEmail = $"{telegramId}@telegram.org";
@@ -256,12 +260,22 @@ namespace backend.Endpoints
                 if (user == null)
                 {
                     _logger.LogInformation("Creating new Telegram user {Id}", telegramId);
-                    user = await _userService.CreateUserAsync(idBasedEmail, telegramPhone, new List<string> { "unregistered" }, "telegram", telegramId);
+                    user = await _userService.CreateUserAsync(idBasedEmail, telegramPhone, new List<string> { "unregistered" }, "telegram", telegramId, telegramName);
                 }
+            }
+
+            // Only set the name from Telegram if there is no Name saved yet
+            if (string.IsNullOrEmpty(user.Name) && !string.IsNullOrEmpty(telegramName))
+            {
+                _logger.LogInformation("Setting name for user {UserId} from Telegram: {NewName}", user.Id, telegramName);
+                await _userService.UpdateUserAsync(user.Id, telegramPhone ?? user.MobileNumber, user.Roles, telegramName);
+                user.Name = telegramName;
+                user.MobileNumber = telegramPhone ?? user.MobileNumber;
             }
             else if (!string.IsNullOrEmpty(telegramPhone) && string.IsNullOrEmpty(user.MobileNumber))
             {
                 await _userService.UpdateUserAsync(user.Id, telegramPhone, user.Roles);
+                user.MobileNumber = telegramPhone;
             }
 
             // 5. Generate Atlas Rig code

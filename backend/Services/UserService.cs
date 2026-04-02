@@ -36,13 +36,14 @@ namespace backend.Services
             return await _dbContext.Users.FindAsync(id);
         }
 
-        public async Task<User> CreateUserAsync(string email, string? mobileNumber, List<string> roles, string? externalProvider = null, string? externalId = null)
+        public async Task<User> CreateUserAsync(string email, string? mobileNumber, List<string> roles, string? externalProvider = null, string? externalId = null, string? name = null)
         {
             var newUser = new User
             {
                 Email = email,
                 MobileNumber = mobileNumber,
-                Roles = roles
+                Roles = roles,
+                Name = name ?? string.Empty
             };
 
             if (!string.IsNullOrEmpty(externalProvider) && !string.IsNullOrEmpty(externalId))
@@ -65,13 +66,18 @@ namespace backend.Services
             return true;
         }
 
-        public async Task<bool> UpdateUserAsync(string id, string? mobileNumber, List<string> roles)
+        public async Task<bool> UpdateUserAsync(string id, string? mobileNumber, List<string> roles, string? name = null)
         {
             var user = await _dbContext.Users.FindAsync(id);
             if (user == null) return false;
 
             user.MobileNumber = mobileNumber;
             user.Roles = roles;
+            
+            if (name != null)
+            {
+                user.Name = name;
+            }
 
             await _dbContext.SaveChangesAsync();
             return true;

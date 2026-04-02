@@ -239,6 +239,7 @@ namespace backend.Services
             var claims = new List<Claim>
             {
                 new Claim(JwtRegisteredClaimNames.Sub,   user.Id),
+                new Claim(JwtRegisteredClaimNames.Name, user.Name),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
                 new Claim(JwtRegisteredClaimNames.Iat,   DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
@@ -254,7 +255,7 @@ namespace backend.Services
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
-                Expires = DateTime.UtcNow.AddHours(1),
+                Expires = DateTime.UtcNow.AddDays(30),
                 Issuer = Issuer,
                 Audience = client.ClientId,
                 SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
@@ -262,6 +263,50 @@ namespace backend.Services
 
             var handler = new JwtSecurityTokenHandler();
             return handler.WriteToken(handler.CreateToken(tokenDescriptor));
+        }
+        public async Task<bool> IsScopeAuthorizedAsync(User user, Client client, string scope)
+        {
+            if (scope == "openid" || scope == "profile" || scope == "email" || scope == "offline_access")
+                return true;
+
+            if (scope.StartsWith("api://"))
+            {
+                var trusts = await _dbContext.CrossAppTrusts
+                    .Where(t => t.RequestingClientId == client.ClientId && t.IsApproved)
+                    .ToListAsync();
+
+                var trust = trusts.FirstOrDefault(t => t.Matches(scope));
+                if (trust == null) return false;
+
+                var isUserAuthorized = await _dbContext.UserClientScopes
+                    .AnyAsync(ucs => ucs.UserId == user.Id && ucs.ClientId == trust.TargetClientId && ucs.Scope == trust.ScopeName);
+
+                if (!isUserAuthorized)
+                {
+                    isUserAuthorized = await _dbContext.ApplicationScopes
+                        .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsAdminApproved);
+                }
+
+                if (!isUserAuthorized && user.Roles.Contains("admin"))
+                {
+                    isUserAuthorized = true;
+                }
+
+                return isUserAuthorized;
+            }
+            else
+            {
+                var isAuthorized = await _dbContext.UserClientScopes
+                    .AnyAsync(ucs => ucs.UserId == user.Id && ucs.ClientId == client.ClientId && ucs.Scope == scope);
+
+                if (!isAuthorized)
+                {
+                    isAuthorized = await _dbContext.ApplicationScopes
+                        .AnyAsync(s => s.ClientId == client.ClientId && (s.Name == scope || s.FullScopeName == scope) && s.IsAdminApproved);
+                }
+
+                return isAuthorized;
+            }
         }
     }
 }
