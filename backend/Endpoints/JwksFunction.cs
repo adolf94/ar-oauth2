@@ -15,9 +15,9 @@ namespace backend.Endpoints
     public class JwksFunction
     {
         private readonly ILogger<JwksFunction> _logger;
-        private readonly Services.RsaKeyService _rsaKeyService;
+        private readonly IRsaKeyService _rsaKeyService;
 
-        public JwksFunction(ILogger<JwksFunction> logger, Services.RsaKeyService rsaKeyService)
+        public JwksFunction(ILogger<JwksFunction> logger, IRsaKeyService rsaKeyService)
         {
             _logger = logger;
             _rsaKeyService = rsaKeyService;

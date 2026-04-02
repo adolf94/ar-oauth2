@@ -14,10 +14,10 @@ namespace backend.Endpoints
     public class AccountsFunction
     {
         private readonly ILogger<AccountsFunction> _logger;
-        private readonly UserService _userService;
-        private readonly TokenService _tokenService;
+        private readonly IUserService _userService;
+        private readonly ITokenService _tokenService;
 
-        public AccountsFunction(ILogger<AccountsFunction> logger, UserService userService, TokenService tokenService)
+        public AccountsFunction(ILogger<AccountsFunction> logger, IUserService userService, ITokenService tokenService)
         {
             _logger = logger;
             _userService = userService;

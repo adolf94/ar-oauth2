@@ -31,16 +31,16 @@ namespace backend.Endpoints
     {
         private readonly ILogger<PasskeyFunction> _logger;
         private readonly IPasswordlessClient _passwordlessClient;
-        private readonly UserService _userService;
-        private readonly AuthCodeService _authCodeService;
-        private readonly TokenService _tokenService;
+        private readonly IUserService _userService;
+        private readonly IAuthCodeService _authCodeService;
+        private readonly ITokenService _tokenService;
 
         public PasskeyFunction(
             ILogger<PasskeyFunction> logger,
             IPasswordlessClient passwordlessClient,
-            UserService userService,
-            AuthCodeService authCodeService,
-            TokenService tokenService)
+            IUserService userService,
+            IAuthCodeService authCodeService,
+            ITokenService tokenService)
         {
             _logger = logger;
             _passwordlessClient = passwordlessClient;

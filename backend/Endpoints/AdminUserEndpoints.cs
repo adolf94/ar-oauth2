@@ -14,15 +14,15 @@ namespace backend.Endpoints
     public class AdminUserEndpoints
     {
         private readonly ILogger<AdminUserEndpoints> _logger;
-        private readonly UserService _userService;
-        private readonly TokenService _tokenService;
-        private readonly UserClientScopeService _userScopeService;
+        private readonly IUserService _userService;
+        private readonly ITokenService _tokenService;
+        private readonly IUserClientScopeService _userScopeService;
 
         public AdminUserEndpoints(
             ILogger<AdminUserEndpoints> logger, 
-            UserService userService, 
-            TokenService tokenService,
-            UserClientScopeService userScopeService)
+            IUserService userService, 
+            ITokenService tokenService,
+            IUserClientScopeService userScopeService)
         {
             _logger = logger;
             _userService = userService;

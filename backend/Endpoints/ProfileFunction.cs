@@ -17,11 +17,11 @@ namespace backend.Endpoints
     public class ProfileFunction
     {
         private readonly ILogger<ProfileFunction> _logger;
-        private readonly UserService _userService;
-        private readonly TokenService _tokenService;
-        private readonly RsaKeyService _rsaKeyService;
+        private readonly IUserService _userService;
+        private readonly ITokenService _tokenService;
+        private readonly IRsaKeyService _rsaKeyService;
 
-        public ProfileFunction(ILogger<ProfileFunction> logger, UserService userService, TokenService tokenService, RsaKeyService rsaKeyService)
+        public ProfileFunction(ILogger<ProfileFunction> logger, IUserService userService, ITokenService tokenService, IRsaKeyService rsaKeyService)
         {
             _logger = logger;
             _userService = userService;

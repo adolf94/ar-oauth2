@@ -27,10 +27,10 @@ namespace backend.Endpoints
     public class LoginFunction
     {
         private readonly ILogger<LoginFunction> _logger;
-        private readonly AuthCodeService _authCodeService;
-        private readonly UserService _userService;
+        private readonly IAuthCodeService _authCodeService;
+        private readonly IUserService _userService;
 
-        public LoginFunction(ILogger<LoginFunction> logger, AuthCodeService authCodeService, UserService userService)
+        public LoginFunction(ILogger<LoginFunction> logger, IAuthCodeService authCodeService, IUserService userService)
         {
             _logger = logger;
             _authCodeService = authCodeService;

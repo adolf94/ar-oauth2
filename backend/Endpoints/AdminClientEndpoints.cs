@@ -17,20 +17,20 @@ namespace backend.Endpoints
     public class AdminClientEndpoints
     {
         private readonly ILogger<AdminClientEndpoints> _logger;
-        private readonly ClientService _clientService;
-        private readonly TokenService _tokenService;
-        private readonly ApplicationScopeService _scopeService;
-        private readonly RoleDefinitionService _roleService;
-        private readonly CrossAppTrustService _trustService;
+        private readonly IClientService _clientService;
+        private readonly ITokenService _tokenService;
+        private readonly IApplicationScopeService _scopeService;
+        private readonly IRoleDefinitionService _roleService;
+        private readonly ICrossAppTrustService _trustService;
         private readonly AppDbContext _dbContext;
 
         public AdminClientEndpoints(
             ILogger<AdminClientEndpoints> logger, 
-            ClientService clientService, 
-            TokenService tokenService,
-            ApplicationScopeService scopeService,
-            RoleDefinitionService roleService,
-            CrossAppTrustService trustService,
+            IClientService clientService, 
+            ITokenService tokenService,
+            IApplicationScopeService scopeService,
+            IRoleDefinitionService roleService,
+            ICrossAppTrustService trustService,
             AppDbContext dbContext)
         {
             _logger = logger;

@@ -17,13 +17,13 @@ namespace backend.Endpoints
     public class UserInfoFunction
     {
         private readonly ILogger<UserInfoFunction> _logger;
-        private readonly TokenService _tokenService;
-        private readonly UserService _userService;
+        private readonly ITokenService _tokenService;
+        private readonly IUserService _userService;
 
         public UserInfoFunction(
             ILogger<UserInfoFunction> logger,
-            TokenService tokenService,
-            UserService userService)
+            ITokenService tokenService,
+            IUserService userService)
         {
             _logger = logger;
             _tokenService = tokenService;

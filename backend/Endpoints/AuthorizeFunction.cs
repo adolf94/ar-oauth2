@@ -12,9 +12,9 @@ namespace backend.Endpoints
     public class AuthorizeFunction
     {
         private readonly ILogger<AuthorizeFunction> _logger;
-        private readonly ClientService _clientService;
+        private readonly IClientService _clientService;
 
-        public AuthorizeFunction(ILogger<AuthorizeFunction> logger, ClientService clientService)
+        public AuthorizeFunction(ILogger<AuthorizeFunction> logger, IClientService clientService)
         {
             _logger = logger;
             _clientService = clientService;

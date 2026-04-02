@@ -13,7 +13,7 @@ namespace backend.Endpoints
 {
     public static class AuthHelper
     {
-        public static (ClaimsPrincipal? Principal, IActionResult? Result) ValidateAdmin(HttpRequest req, TokenService tokenService, ILogger logger)
+        public static (ClaimsPrincipal? Principal, IActionResult? Result) ValidateAdmin(HttpRequest req, ITokenService tokenService, ILogger logger)
         {
             var (principal, result) = ValidateToken(req, tokenService, logger);
             if (result != null) return (null, result);
@@ -27,7 +27,7 @@ namespace backend.Endpoints
             return (principal, null);
         }
 
-        public static (ClaimsPrincipal? Principal, IActionResult? Result) ValidateToken(HttpRequest req, TokenService tokenService, ILogger logger)
+        public static (ClaimsPrincipal? Principal, IActionResult? Result) ValidateToken(HttpRequest req, ITokenService tokenService, ILogger logger)
         {
             if (!req.Headers.TryGetValue("Authorization", out var authHeader))
             {
