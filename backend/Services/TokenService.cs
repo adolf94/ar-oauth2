@@ -68,8 +68,7 @@ namespace backend.Services
                         if (!isUserAuthorized)
                         {
                             isUserAuthorized = await _dbContext.ApplicationScopes
-                                .Where(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsAdminApproved == true)
-                                .AnyAsync();
+                                .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsClientOnly == true);
                         }
 
                         // Admin Bypass: If user is a global admin, they are authorized for any trusted cross-app scope
@@ -182,24 +181,48 @@ namespace backend.Services
         {
             var key = _rsaKeyService.GetSigningKey();
             
-            // For Client Credentials, we ONLY allow scopes owned by this client that are marked IsClientOnly
+            // 1. Fetch own Client-Only scopes
             var clientOnlyScopes = await _dbContext.ApplicationScopes
                 .Where(s => s.ClientId == client.ClientId && s.IsClientOnly == true)
                 .Select(s => s.FullScopeName)
                 .ToListAsync();
 
+            // 2. Fetch Cross-App Trusts and their associated IsClientOnly scopes
+            var trusts = await _dbContext.CrossAppTrusts
+                .Where(t => t.RequestingClientId == client.ClientId && t.IsApproved)
+                .ToListAsync();
+
+            var allowedCrossAppScopes = new List<string>();
+            if (trusts.Any())
+            {
+                var targetClientIds = trusts.Select(t => t.TargetClientId).Distinct().ToList();
+                var targetScopes = await _dbContext.ApplicationScopes
+                    .Where(s => targetClientIds.Contains(s.ClientId) && s.IsClientOnly == true)
+                    .ToListAsync();
+
+                foreach (var trust in trusts)
+                {
+                    if (targetScopes.Any(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName))
+                    {
+                        allowedCrossAppScopes.Add($"api://{trust.TargetClientId}/{trust.ScopeName}");
+                    }
+                }
+            }
+
+            var allAllowedScopes = clientOnlyScopes.Concat(allowedCrossAppScopes).ToList();
+
             var finalScopesList = new List<string>();
             if (string.IsNullOrEmpty(requestedScopes))
             {
-                // If no specific scopes requested, grant all Client-Only scopes
-                finalScopesList.AddRange(clientOnlyScopes);
+                // If no specific scopes requested, grant all allowed Client-Only scopes (including trusted cross-app ones)
+                finalScopesList.AddRange(allAllowedScopes);
             }
             else
             {
                 var requestedList = requestedScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 foreach (var s in requestedList)
                 {
-                    if (clientOnlyScopes.Contains(s))
+                    if (allAllowedScopes.Contains(s))
                         finalScopesList.Add(s);
                 }
             }
@@ -208,17 +231,34 @@ namespace backend.Services
 
             var claims = new List<Claim>
             {
-                new Claim(JwtRegisteredClaimNames.Sub,   client.ClientId), // Subject is the client itself
+                new Claim(JwtRegisteredClaimNames.Sub,   client.ClientId), // Subject is title of the client itself
                 new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
                 new Claim("client_id",                   client.ClientId),
                 new Claim("scope",                       finalScopesString),
                 new Claim("grant_type",                  "client_credentials")
             };
 
-            // Add client-only scopes as roles for the client principal
+            // Add all assigned scopes as roles for the client principal
             foreach (var scope in finalScopesList)
             {
                 claims.Add(new Claim(ClaimTypes.Role, scope));
+            }
+
+            // Build Audiences list (Requesting Client + Target Clients for cross-app scopes)
+            var audiences = new List<string> { client.ClientId };
+            foreach (var fs in finalScopesList)
+            {
+                if (fs.StartsWith("api://"))
+                {
+                    var targetId = fs.Substring(6).Split('/')[0];
+                    if (!audiences.Contains(targetId))
+                        audiences.Add(targetId);
+                }
+            }
+
+            foreach (var aud in audiences)
+            {
+                claims.Add(new Claim(JwtRegisteredClaimNames.Aud, aud));
             }
 
             var tokenDescriptor = new SecurityTokenDescriptor
@@ -226,7 +266,6 @@ namespace backend.Services
                 Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.UtcNow.AddHours(1),
                 Issuer = Issuer,
-                Audience = client.ClientId,
                 SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
             };
 
@@ -356,7 +395,7 @@ namespace backend.Services
                 if (!isUserAuthorized)
                 {
                     isUserAuthorized = await _dbContext.ApplicationScopes
-                        .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && (s.IsAdminApproved == true || s.IsClientOnly == true));
+                        .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsClientOnly == true);
                 }
 
                 if (!isUserAuthorized && user.Roles.Contains("admin"))
