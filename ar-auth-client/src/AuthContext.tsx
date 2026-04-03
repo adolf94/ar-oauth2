@@ -11,13 +11,20 @@ export interface User {
   scopes: string[];
 }
 
+export interface LoginOptions {
+  useRedirect?: boolean;
+  state?: any;
+}
+
 interface AuthContextType {
   user: User | null;
-  login: (options?: { useRedirect?: boolean }) => Promise<void>;
+  loginState: any;
+  login: (options?: LoginOptions) => Promise<{ state: any; user: User; idToken: string | null; oidcUser: OidcUser } | void>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
   accessToken: string | null;
+  idToken: string | null;
   accessTokens: Record<string, { token: string; expiresAt: number }>;
   hasScope: (scope: string) => boolean;
   getAccessToken: (scope?: string) => Promise<string | null>;
@@ -71,7 +78,9 @@ export interface AuthProviderProps {
 
 export const AuthProvider = ({ children, config }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
+  const [loginState, setLoginState] = useState<any>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [idToken, setIdToken] = useState<string | null>(null);
   const [accessTokens, setAccessTokens] = useState<Record<string, { token: string; expiresAt: number }>>({});
   const [isLoading, setIsLoading] = useState(true);
 
@@ -144,19 +153,27 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
     };
   }, [userManager, config.clientId]);
 
-  const login = async (options?: { useRedirect?: boolean }) => {
+  const login = async (options?: LoginOptions): Promise<{ state: any; user: User; idToken: string | null; oidcUser: OidcUser } | void> => {
     try {
       const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
       const isSocialInApp = /FBAN|FBAV|Instagram|Messenger|WhatsApp/i.test(ua);
       const isIOS = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
 
+      const signinArgs = options?.state ? { state: options.state } : undefined;
+
       if (options?.useRedirect || isSocialInApp || isIOS) {
-        await userManager.signinRedirect();
+        await userManager.signinRedirect(signinArgs);
         return;
       }
 
-      const oidcUser = await userManager.signinPopup();
-      updateUserState(oidcUser);
+      const oidcUser = await userManager.signinPopup(signinArgs);
+      const mappedUser = updateUserState(oidcUser);
+      return { 
+        state: oidcUser.state, 
+        user: mappedUser, 
+        idToken: oidcUser.id_token ?? null,
+        oidcUser
+      };
     } catch (error: any) {
       if (error?.message === 'Popup closed') {
         console.warn('Authentication popup was closed by the user.');
@@ -171,7 +188,9 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
   const logout = () => {
     userManager.removeUser();
     setUser(null);
+    setLoginState(null);
     setAccessToken(null);
+    setIdToken(null);
     setAccessTokens({});
 
     // Clear session storage cache
@@ -185,8 +204,9 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
     }
   };
 
-  const updateUserState = (oidcUser: OidcUser) => {
+  const updateUserState = (oidcUser: OidcUser): User => {
     const mappedUser = mapOidcUser(oidcUser, config.clientId);
+    setLoginState(oidcUser.state);
     
     setUser(prev => {
       if (!prev || prev.userId !== mappedUser.userId) return mappedUser;
@@ -203,6 +223,7 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
     });
 
     setAccessToken(oidcUser.access_token);
+    setIdToken(oidcUser.id_token ?? null);
     
     setAccessTokens(prev => ({
       ...prev,
@@ -218,6 +239,8 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
       token: oidcUser.access_token,
       expiresAt: oidcUser.expires_at
     }));
+
+    return mappedUser;
   };
   const getAccessToken = async (scope?: string): Promise<string | null> => {
     const currentScope = scope || config.scope;
@@ -279,7 +302,7 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, isLoading, accessToken, accessTokens, hasScope, getAccessToken }}>
+    <AuthContext.Provider value={{ user, loginState, login, logout, isAuthenticated: !!user, isLoading, accessToken, idToken, accessTokens, hasScope, getAccessToken }}>
       {children}
     </AuthContext.Provider>
   );

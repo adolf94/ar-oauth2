@@ -572,8 +572,8 @@ export default function AdminApps() {
                         </Tooltip>
                       )}
                       {row.clientOnlyCount !== undefined && row.clientOnlyCount > 0 && (
-                        <Tooltip title="Machine-to-Machine (Client-Only) Scopes">
-                          <Chip size="small" label={`${row.clientOnlyCount} M2M`} color="warning" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                        <Tooltip title="App Principal (Client-Only) Scopes">
+                          <Chip size="small" label={`${row.clientOnlyCount} App Principal`} color="warning" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
                         </Tooltip>
                       )}
                       {row.trustCount !== undefined && row.trustCount > 0 && (
@@ -666,8 +666,8 @@ export default function AdminApps() {
                               </Tooltip>
                             )}
                             {scope.isClientOnly && (
-                              <Tooltip title="Machine-to-machine only (cannot be assigned to users)">
-                                <Chip size="small" label="Machine" color="warning" icon={<SyncIcon sx={{ fontSize: '14px !important' }} />} />
+                              <Tooltip title="App Principal only (cannot be assigned to users)">
+                                <Chip size="small" label="App Principal" color="warning" icon={<SyncIcon sx={{ fontSize: '14px !important' }} />} />
                               </Tooltip>
                             )}
                             {!scope.isAdminApproved && !scope.isClientOnly && (
@@ -739,9 +739,9 @@ export default function AdminApps() {
                       }
                       label={
                         <Box>
-                          <Typography variant="body2">Client-Only (M2M)</Typography>
+                          <Typography variant="body2">Client-Only (App Principal)</Typography>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            Only for client-to-client flows. Users cannot request this.
+                            Only for app-to-app flows. Users cannot request this.
                           </Typography>
                         </Box>
                       }

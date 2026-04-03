@@ -92,6 +92,66 @@ userManager.signinPopupCallback();
 
 ---
 
+## 📦 Method 3: Using Atlas Rig Auth Client (Highly Recommended)
+
+For the most streamlined experience in React/TypeScript applications, use our official wrapper library which provides a `useAuth` hook and simplified state management.
+
+### 1. Wrap your App
+```tsx
+import { AuthProvider } from 'ar-auth-client';
+
+const config = {
+  authority: 'https://auth.adolfrey.com',
+  clientId: 'my-app-id',
+  redirectUri: window.location.origin + '/callback',
+  scope: 'openid profile email'
+};
+
+root.render(
+  <AuthProvider config={config}>
+    <App />
+  </AuthProvider>
+);
+```
+
+### 2. Use the Context
+```tsx
+import { useAuth } from 'ar-auth-client';
+
+export const Navbar = () => {
+  const { user, login, logout, loginState, isLoading } = useAuth();
+
+  if (isLoading) return <span>...</span>;
+
+  return user ? (
+    <div>
+      <span>{user.name}</span>
+      <button onClick={logout}>Logout</button>
+    </div>
+  ) : (
+    <button onClick={() => login({ state: { from: 'navbar' } })}>Login</button>
+  );
+};
+```
+
+### 3. Handling Login Result
+The `login` function resolves with a result object (for popup flows) containing the OIDC state, the user, and the tokens. For redirect flows, the state is available via the `loginState` property in the context.
+
+```tsx
+const handleLogin = async () => {
+  const result = await login({ 
+    state: { returnUrl: '/dashboard' } 
+  });
+  
+  if (result) {
+    console.log("Flow state:", result.state);
+    console.log("ID Token:", result.idToken);
+  }
+};
+```
+
+---
+
 ## ⚙️ Method 2: Manual Integration (Without Libraries)
 
 If you cannot use a library, you must implement the **Authorization Code Flow with PKCE** manually.
@@ -172,13 +232,26 @@ Cross-app scopes must use the following URI format:
 ### Requirements for Access
 For a cross-app scope to be granted in an access token, the following conditions must be met:
 
-1.  **Trust Relationship:** An administrator must create a "Cross-App Trust" record in the Admin UI authorizing `App A` (Requesting Client) to request `read:stock` from `App B` (Target Client).
-2.  **User Authorization:** 
-    *   The user must have been manually assigned the `read:stock` scope for `App B`.
-    *   **OR**, the scope `read:stock` must be marked as **Admin Approved (Auto-grant)** for `App B`.
+1.  **Trust Relationship:** An administrator must create a "Cross-App Trust" record in the Admin UI authorizing `App A` (Requesting Client) to request a specific scope from `App B` (Target Client).
+2.  **Authorization Rule:** 
+    *   For **User Sessions**: The user must have been manually assigned the scope for `App B`.
+    *   For **App Principal Sessions**: The scope must be marked as **Client-Only (App Principal)**.
+    *   **OR**, the scope must be marked as **Admin Approved (Auto-grant)** for `App B` (applies to user sessions).
+
+### 🤖 App Principal Flow
+Applications can request tokens directly using their own credentials to access trusted cross-app scopes.
+
+**Token Request:**
+`POST https://auth.adolfrey.com/api/token`
+
+**Payload:**
+- `grant_type`: `client_credentials`
+- `client_id`: `app-a`
+- `client_secret`: `secret-a`
+- `scope`: `api://app-b/read:data`
 
 ### How to Request
-Add the qualified scope to your authorization request alongside standard OIDC scopes.
+Add the qualified scope to your authorization or token request alongside standard OIDC scopes.
 
 #### Using OIDC Library
 ```typescript
