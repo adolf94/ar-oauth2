@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace backend.Models
 {
@@ -10,6 +11,10 @@ namespace backend.Models
         public List<ClientSecret> ClientSecrets { get; set; } = new();
         public List<string> RedirectUris { get; set; } = new();
         public List<string> AllowedScopes { get; set; } = new();
+
+        public string? TelegramBotClientId { get; set; }
+        [JsonIgnore]
+        public string? TelegramBotClientSecret { get; set; }
     }
 
     public class ClientSecret

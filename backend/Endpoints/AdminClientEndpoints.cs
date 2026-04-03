@@ -234,6 +234,7 @@ namespace backend.Endpoints
                 RedirectUris = c.RedirectUris,
                 AllowedScopes = c.AllowedScopes,
                 ClientSecrets = c.ClientSecrets,
+                TelegramBotClientId = c.TelegramBotClientId,
                 RoleCount = allRoles.Count(r => r.ClientId == c.ClientId),
                 ScopeCount = allScopes.Count(s => s.ClientId == c.ClientId),
                 AutoGrantCount = allScopes.Count(s => s.ClientId == c.ClientId && s.IsAdminApproved == true),
@@ -247,6 +248,14 @@ namespace backend.Endpoints
         public class ClientCreationRequest : Client
         {
             public bool IsPublic { get; set; }
+            // Re-declare for deserialization since base is JsonIgnored
+            public new string? TelegramBotClientSecret { get; set; }
+        }
+
+        public class ClientUpdateRequest : Client
+        {
+            // Re-declare for deserialization since base is JsonIgnored
+            public new string? TelegramBotClientSecret { get; set; }
         }
 
         [Function("CreateClient")]
@@ -263,12 +272,12 @@ namespace backend.Endpoints
 
             if (data.IsPublic)
             {
-                var newClient = await _clientService.CreatePublicClientAsync(data.ClientId, data.RedirectUris, data.AllowedScopes);
+                var newClient = await _clientService.CreatePublicClientAsync(data.ClientId, data.RedirectUris, data.AllowedScopes, data.TelegramBotClientId, data.TelegramBotClientSecret);
                 return new OkObjectResult(new { client = newClient, plainSecret = (string?)null });
             }
             else
             {
-                var (newClient, plainSecret) = await _clientService.CreateClientAsync(data.ClientId, data.RedirectUris, data.AllowedScopes);
+                var (newClient, plainSecret) = await _clientService.CreateClientAsync(data.ClientId, data.RedirectUris, data.AllowedScopes, data.TelegramBotClientId, data.TelegramBotClientSecret);
                 return new OkObjectResult(new { client = newClient, plainSecret = plainSecret });
             }
         }
@@ -298,11 +307,11 @@ namespace backend.Endpoints
             if (!Guid.TryParse(id, out Guid guidId)) return new BadRequestObjectResult("Invalid ID format");
 
             var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var data = JsonSerializer.Deserialize<Client>(requestBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var data = JsonSerializer.Deserialize<ClientUpdateRequest>(requestBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
             if (data == null) return new BadRequestObjectResult("Invalid client data.");
 
-            var success = await _clientService.UpdateClientAsync(guidId, data.RedirectUris, data.AllowedScopes);
+            var success = await _clientService.UpdateClientAsync(guidId, data.RedirectUris, data.AllowedScopes, data.TelegramBotClientId, data.TelegramBotClientSecret);
             if (!success) return new NotFoundResult();
 
             return new OkResult();

@@ -29,14 +29,16 @@ namespace backend.Services
             return await _dbContext.Clients.Include(c => c.ClientSecrets).ToListAsync();
         }
 
-        public async Task<(Client Client, string PlainSecret)> CreateClientAsync(string clientId, List<string> redirectUris, List<string> allowedScopes)
+        public async Task<(Client Client, string PlainSecret)> CreateClientAsync(string clientId, List<string> redirectUris, List<string> allowedScopes, string? telegramBotClientId = null, string? telegramBotClientSecret = null)
         {
             var plainSecret = GenerateSecret(32);
             var newClient = new Client
             {
                 ClientId = clientId,
                 RedirectUris = redirectUris,
-                AllowedScopes = allowedScopes
+                AllowedScopes = allowedScopes,
+                TelegramBotClientId = telegramBotClientId,
+                TelegramBotClientSecret = telegramBotClientSecret
             };
 
             newClient.ClientSecrets.Add(new ClientSecret
@@ -50,13 +52,15 @@ namespace backend.Services
             return (newClient, plainSecret);
         }
 
-        public async Task<Client> CreatePublicClientAsync(string clientId, List<string> redirectUris, List<string> allowedScopes)
+        public async Task<Client> CreatePublicClientAsync(string clientId, List<string> redirectUris, List<string> allowedScopes, string? telegramBotClientId = null, string? telegramBotClientSecret = null)
         {
             var newClient = new Client
             {
                 ClientId = clientId,
                 RedirectUris = redirectUris,
                 AllowedScopes = allowedScopes,
+                TelegramBotClientId = telegramBotClientId,
+                TelegramBotClientSecret = telegramBotClientSecret,
                 ClientSecrets = new List<ClientSecret>() // No secrets
             };
 
@@ -121,13 +125,19 @@ namespace backend.Services
             return result.ToString();
         }
         
-        public async Task<bool> UpdateClientAsync(Guid id, List<string> redirectUris, List<string> allowedScopes)
+        public async Task<bool> UpdateClientAsync(Guid id, List<string> redirectUris, List<string> allowedScopes, string? telegramBotClientId = null, string? telegramBotClientSecret = null)
         {
             var client = await _dbContext.Clients.FindAsync(id);
             if (client == null) return false;
 
             client.RedirectUris = redirectUris;
             client.AllowedScopes = allowedScopes;
+            client.TelegramBotClientId = telegramBotClientId;
+            
+            if (!string.IsNullOrEmpty(telegramBotClientSecret))
+            {
+                client.TelegramBotClientSecret = telegramBotClientSecret;
+            }
 
             await _dbContext.SaveChangesAsync();
             return true;

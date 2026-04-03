@@ -16,6 +16,8 @@ interface AppModel {
   clientOnlyCount?: number;
   trustCount?: number;
   applicationScopes?: { id: string; name: string; fullScopeName: string; description?: string; isAdminApproved?: boolean; isClientOnly?: boolean }[];
+  telegramBotClientId?: string;
+  telegramBotClientSecret?: string;
 }
 
 export default function AdminApps() {
@@ -23,7 +25,14 @@ export default function AdminApps() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editingApp, setEditingApp] = useState<AppModel | null>(null);
-  const [newApp, setNewApp] = useState({ clientId: '', redirectUris: [] as string[], allowedScopes: ['openid', 'profile'], isPublic: false });
+  const [newApp, setNewApp] = useState({ 
+    clientId: '', 
+    redirectUris: [] as string[], 
+    allowedScopes: ['openid', 'profile'], 
+    isPublic: false,
+    telegramBotClientId: '',
+    telegramBotClientSecret: ''
+  });
   const [submitting, setSubmitting] = useState(false);
   const [generatedSecret, setGeneratedSecret] = useState<string | null>(null);
   const [showSecretDialog, setShowSecretDialog] = useState(false);
@@ -69,7 +78,14 @@ export default function AdminApps() {
 
   const handleOpenCreate = () => {
     setEditingApp(null);
-    setNewApp({ clientId: '', redirectUris: [], allowedScopes: ['openid', 'profile'], isPublic: false });
+    setNewApp({ 
+      clientId: '', 
+      redirectUris: [], 
+      allowedScopes: ['openid', 'profile'], 
+      isPublic: false,
+      telegramBotClientId: '',
+      telegramBotClientSecret: ''
+    });
     setOpen(true);
   };
 
@@ -79,7 +95,9 @@ export default function AdminApps() {
       clientId: app.clientId, 
       redirectUris: [...(app.redirectUris || [])], 
       allowedScopes: [...(app.allowedScopes || [])],
-      isPublic: !app.clientSecrets || app.clientSecrets.length === 0
+      isPublic: !app.clientSecrets || app.clientSecrets.length === 0,
+      telegramBotClientId: app.telegramBotClientId || '',
+      telegramBotClientSecret: '' // Never show the secret
     });
     setOpen(true);
   };
@@ -90,14 +108,18 @@ export default function AdminApps() {
       if (editingApp) {
         await api.put(`/manage/clients/${editingApp.id}`, {
           redirectUris: newApp.redirectUris,
-          allowedScopes: newApp.allowedScopes
+          allowedScopes: newApp.allowedScopes,
+          telegramBotClientId: newApp.telegramBotClientId,
+          telegramBotClientSecret: newApp.telegramBotClientSecret || undefined
         });
       } else {
         const response = await api.post('/manage/clients', {
           clientId: newApp.clientId,
           redirectUris: newApp.redirectUris,
           allowedScopes: newApp.allowedScopes,
-          isPublic: newApp.isPublic
+          isPublic: newApp.isPublic,
+          telegramBotClientId: newApp.telegramBotClientId,
+          telegramBotClientSecret: newApp.telegramBotClientSecret
         });
         if (response.data.plainSecret) {
           setGeneratedSecret(response.data.plainSecret);
@@ -390,6 +412,34 @@ export default function AdminApps() {
                 />
               )}
             />
+
+            <Box sx={{ mt: 2, p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom fontWeight="bold" color="primary">
+                Telegram Bot (Optional Overlay)
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                Configure these to use a custom Telegram Bot for this application instead of the system default.
+              </Typography>
+              <Stack spacing={2}>
+                <TextField
+                  size="small"
+                  label="Telegram Bot Client ID"
+                  fullWidth
+                  value={newApp.telegramBotClientId}
+                  onChange={(e) => setNewApp({ ...newApp, telegramBotClientId: e.target.value })}
+                  placeholder="e.g. 123456789 (numeric part of token)"
+                />
+                <TextField
+                  size="small"
+                  label="Telegram Bot Token"
+                  type="password"
+                  fullWidth
+                  value={newApp.telegramBotClientSecret}
+                  onChange={(e) => setNewApp({ ...newApp, telegramBotClientSecret: e.target.value })}
+                  placeholder={editingApp ? "Leave blank to keep current" : "e.g. 123456:ABC-DEF..."}
+                />
+              </Stack>
+            </Box>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>

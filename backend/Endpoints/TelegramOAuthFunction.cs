@@ -23,6 +23,7 @@ namespace backend.Endpoints
         private readonly ILogger<TelegramOAuthFunction> _logger;
         private readonly IAuthCodeService _authCodeService;
         private readonly IUserService _userService;
+        private readonly IClientService _clientService;
         private readonly Configuration.AppConfig _appConfig;
         private readonly IRsaKeyService _rsaKeyService;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -33,6 +34,7 @@ namespace backend.Endpoints
             ILogger<TelegramOAuthFunction> logger,
             IAuthCodeService authCodeService,
             IUserService userService,
+            IClientService clientService,
             Configuration.AppConfig appConfig,
             IRsaKeyService rsaKeyService,
             IHttpClientFactory httpClientFactory)
@@ -40,6 +42,7 @@ namespace backend.Endpoints
             _logger = logger;
             _authCodeService = authCodeService;
             _userService = userService;
+            _clientService = clientService;
             _appConfig = appConfig;
             _rsaKeyService = rsaKeyService;
             _httpClientFactory = httpClientFactory;
@@ -105,14 +108,23 @@ namespace backend.Endpoints
                 Expires = DateTimeOffset.UtcNow.AddMinutes(15)
             });
 
-            var botId = _appConfig.Telegram.ClientId; 
-            if (string.IsNullOrEmpty(botId) && !string.IsNullOrEmpty(_appConfig.Telegram.ClientSecret))
+            // Determine which Telegram Bot to use (Client-specific or System Default)
+            var client = await _clientService.GetByClientIdAsync(clientId);
+            var botToken = !string.IsNullOrEmpty(client?.TelegramBotClientSecret) 
+                ? client.TelegramBotClientSecret 
+                : _appConfig.Telegram.ClientSecret;
+            
+            var botId = !string.IsNullOrEmpty(client?.TelegramBotClientId)
+                ? client.TelegramBotClientId
+                : _appConfig.Telegram.ClientId;
+
+            if (string.IsNullOrEmpty(botId) && !string.IsNullOrEmpty(botToken))
             {
                 // Extract bot ID from token (it's the numeric part before the first colon)
-                var colonIndex = _appConfig.Telegram.ClientSecret.IndexOf(':');
+                var colonIndex = botToken.IndexOf(':');
                 if (colonIndex > 0)
                 {
-                    botId = _appConfig.Telegram.ClientSecret.Substring(0, colonIndex);
+                    botId = botToken.Substring(0, colonIndex);
                 }
             }
             
@@ -185,8 +197,23 @@ namespace backend.Endpoints
                 return new BadRequestObjectResult(new { error = "missing_code" });
             }
 
-            var botId = _appConfig.Telegram.ClientId; 
-            var botToken = _appConfig.Telegram.ClientSecret;
+            var client = await _clientService.GetByClientIdAsync(spClientId);
+            var botToken = !string.IsNullOrEmpty(client?.TelegramBotClientSecret) 
+                ? client.TelegramBotClientSecret 
+                : _appConfig.Telegram.ClientSecret;
+            
+            var botId = !string.IsNullOrEmpty(client?.TelegramBotClientId)
+                ? client.TelegramBotClientId
+                : _appConfig.Telegram.ClientId;
+
+            if (string.IsNullOrEmpty(botId) && !string.IsNullOrEmpty(botToken))
+            {
+                var colonIndex = botToken.IndexOf(':');
+                if (colonIndex > 0)
+                {
+                    botId = botToken.Substring(0, colonIndex);
+                }
+            }
 
             var callbackUrl = _appConfig.Telegram.RedirectUri;
             if (string.IsNullOrEmpty(callbackUrl))
