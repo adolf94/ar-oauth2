@@ -18,12 +18,14 @@ namespace backend.Services
         private readonly AppDbContext _dbContext;
         private readonly IRsaKeyService _rsaKeyService;
         private readonly Configuration.AppConfig _appConfig;
+        private readonly IDbHelper _dbHelper;
 
-        public TokenService(AppDbContext dbContext, IRsaKeyService rsaKeyService, Configuration.AppConfig appConfig)
+        public TokenService(AppDbContext dbContext, IRsaKeyService rsaKeyService, Configuration.AppConfig appConfig, IDbHelper dbHelper)
         {
             _dbContext = dbContext;
             _rsaKeyService = rsaKeyService;
             _appConfig = appConfig;
+            _dbHelper = dbHelper;
         }
 
         private string Issuer => _appConfig.Jwt.Issuer;
@@ -315,7 +317,7 @@ namespace backend.Services
             };
 
             _dbContext.Tokens.Add(token);
-            await _dbContext.SaveChangesAsync();
+            await _dbHelper.SaveChangesAsync();
 
             return token.Id;
         }

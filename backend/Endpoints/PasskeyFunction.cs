@@ -34,19 +34,22 @@ namespace backend.Endpoints
         private readonly IUserService _userService;
         private readonly IAuthCodeService _authCodeService;
         private readonly ITokenService _tokenService;
+        private readonly IDbHelper _dbHelper;
 
         public PasskeyFunction(
             ILogger<PasskeyFunction> logger,
             IPasswordlessClient passwordlessClient,
             IUserService userService,
             IAuthCodeService authCodeService,
-            ITokenService tokenService)
+            ITokenService tokenService,
+            IDbHelper dbHelper)
         {
             _logger = logger;
             _passwordlessClient = passwordlessClient;
             _userService = userService;
             _authCodeService = authCodeService;
             _tokenService = tokenService;
+            _dbHelper = dbHelper;
         }
 
         [Function("PasskeyLogin")]
@@ -74,6 +77,8 @@ namespace backend.Endpoints
                     return new UnauthorizedObjectResult(new { error = "user_not_found" });
                 }
 
+                _dbHelper.BeginBatch();
+
                 // 3. Generate Atlas Rig code (Authorization Code Flow with PKCE)
                 var authCode = await _authCodeService.CreateAuthCodeAsync(
                     requestBody.client_id ?? string.Empty,
@@ -84,10 +89,7 @@ namespace backend.Endpoints
                     requestBody.scope ?? string.Empty
                 );
 
-                // 4. Update Recently Used Accounts cookie
-                var recentIds = AuthHelper.GetRecentUserIds(req);
-                recentIds.Insert(0, user.Id);
-                AuthHelper.SetRecentUserIds(req.HttpContext.Response, recentIds);
+                await _dbHelper.CommitBatchAsync();
 
                 // 5. Set active session cookie (HttpOnly/Secure)
                 var sessionToken = _tokenService.GenerateSessionToken(user);

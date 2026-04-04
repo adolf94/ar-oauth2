@@ -115,8 +115,15 @@ namespace backend.Endpoints
 
             if (data == null) return new BadRequestObjectResult("Invalid user data.");
 
-            var success = await _userService.UpdateUserAsync(id, data.MobileNumber, data.Roles);
-            if (!success) return new NotFoundResult();
+            var user = await _userService.GetByIdAsync(id);
+            if (user == null) return new NotFoundResult();
+
+            user.MobileNumber = data.MobileNumber;
+            user.Roles = data.Roles;
+            if (!string.IsNullOrEmpty(data.Name)) user.Name = data.Name;
+
+            var success = await _userService.UpdateUserAsync(user);
+            if (!success) return new BadRequestObjectResult("Failed to update user.");
 
             return new OkResult();
         }

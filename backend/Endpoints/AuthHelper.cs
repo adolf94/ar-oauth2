@@ -52,28 +52,6 @@ namespace backend.Endpoints
 
             return (principal, null);
         }
-        public static List<string> GetRecentUserIds(HttpRequest req)
-        {
-            if (req.Cookies.TryGetValue("ar_auth_recent", out var val) && !string.IsNullOrEmpty(val))
-            {
-                try { return JsonSerializer.Deserialize<List<string>>(val) ?? new List<string>(); } catch { return new List<string>(); }
-            }
-            return new List<string>();
-        }
-
-        public static void SetRecentUserIds(HttpResponse res, List<string> ids)
-        {
-            var options = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.Strict,
-                Expires = DateTime.UtcNow.AddDays(30),
-                Path = "/"
-            };
-            res.Cookies.Append("ar_auth_recent", JsonSerializer.Serialize(ids.Distinct().Take(5)), options);
-        }
-
         // ── Session Cookie (ar_auth_session) ──
 
         private const string SessionCookieName = "ar_auth_session";

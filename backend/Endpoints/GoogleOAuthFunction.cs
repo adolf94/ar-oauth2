@@ -33,6 +33,7 @@ namespace backend.Endpoints
         private readonly Configuration.AppConfig _appConfig;
         private readonly IRsaKeyService _rsaKeyService;
         private readonly ITokenService _tokenService;
+        private readonly IDbHelper _dbHelper;
 
         public GoogleOAuthFunction(
             ILogger<GoogleOAuthFunction> logger,
@@ -41,7 +42,8 @@ namespace backend.Endpoints
             IHttpClientFactory httpClientFactory,
             Configuration.AppConfig appConfig,
             IRsaKeyService rsaKeyService,
-            ITokenService tokenService)
+            ITokenService tokenService,
+            IDbHelper dbHelper)
         {
             _logger = logger;
             _authCodeService = authCodeService;
@@ -50,6 +52,7 @@ namespace backend.Endpoints
             _appConfig = appConfig;
             _rsaKeyService = rsaKeyService;
             _tokenService = tokenService;
+            _dbHelper = dbHelper;
         }
 
         [Function("GoogleOAuthLogin")]
@@ -233,9 +236,12 @@ namespace backend.Endpoints
             var googleEmail = payload.Email;
             var googleSub = payload.Subject;
             var googleName = payload.Name;
+            var googlePicture = payload.Picture;
             // 4. Map Google User
             var user = await _userService.GetByExternalIdentityAsync("google", googleSub);
             
+            _dbHelper.BeginBatch();
+
             // Link Mode: If we have a link token, we MUST link to that user
             if (!string.IsNullOrEmpty(linkToken))
             {
@@ -251,8 +257,11 @@ namespace backend.Endpoints
                     var targetUserId = linkPrincipal.FindFirst("link_user_id")?.Value;
                     if (!string.IsNullOrEmpty(targetUserId)) {
                         _logger.LogInformation("Linking Google {Sub} to user {TargetUserId} via link_token", googleSub, targetUserId);
-                        await _userService.LinkExternalIdentityAsync(targetUserId, "google", googleSub, googleSub, googleName, googleEmail);
-                        user = await _userService.GetByIdAsync(targetUserId);
+                        var targetUser = await _userService.GetByIdAsync(targetUserId);
+                        if (targetUser != null) {
+                            targetUser.SyncIdentity("google", googleSub, googleSub, googleName, googleEmail, null, googlePicture);
+                            user = targetUser;
+                        }
                     }
                 } catch (Exception ex) {
                     _logger.LogWarning(ex, "Invalid link_token in Google callback.");
@@ -270,26 +279,18 @@ namespace backend.Endpoints
                 if (user == null)
                 {
                     _logger.LogInformation("User {Sub} not found — creating new user.", googleSub);
-                    user = await _userService.CreateUserAsync(googleEmail ?? string.Empty, null, new List<string> { "unregistered" }, "google", googleSub, googleName, googleSub, googleEmail);
+                    user = await _userService.CreateUserAsync(googleEmail ?? string.Empty, null, new List<string> { "unregistered" }, "google", googleSub, googleName, googleSub, googleEmail, null, googlePicture);
                 }
                 else
                 {
                     // If user found by email, link to Google ID
                     _logger.LogInformation("Found existing user by email {Email} — linking to Google ID {Sub}", googleEmail, googleSub);
-                    await _userService.LinkExternalIdentityAsync(user.Id, "google", googleSub, googleSub, googleName, googleEmail);
+                    user.SyncIdentity("google", googleSub, googleSub, googleName, googleEmail, null, googlePicture);
                 }
             }
 
-            // Always update identity details
-            await _userService.UpdateExternalIdentityDetailsAsync(user.Id, "google", googleSub, googleSub, googleName, googleEmail);
-
-            // Always use the name from Google
-            if (!string.IsNullOrEmpty(googleName) && (user.Name != googleName))
-            {
-                _logger.LogInformation("Updating name for user {UserId} from Google: {OldName} -> {NewName}", user.Id, user.Name, googleName);
-                await _userService.UpdateUserAsync(user.Id, user.MobileNumber, user.Roles, googleName);
-                user.Name = googleName;
-            }
+            // Always update identity details and sync top-level fields
+            user.SyncIdentity("google", googleSub, googleSub, googleName, googleEmail, null, googlePicture);
 
             // 4. Generate Atlas Rig code
             var authCode = await _authCodeService.CreateAuthCodeAsync(
@@ -301,10 +302,7 @@ namespace backend.Endpoints
                 spScope
             );
 
-            // 5. Update Recently Used Accounts cookie
-            var recentIds = AuthHelper.GetRecentUserIds(req);
-            recentIds.Insert(0, user.Id);
-            AuthHelper.SetRecentUserIds(req.HttpContext.Response, recentIds);
+            await _dbHelper.CommitBatchAsync();
 
             // 6. Set active session cookie (HttpOnly/Secure)
             var sessionToken = _tokenService.GenerateSessionToken(user);

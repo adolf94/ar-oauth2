@@ -22,24 +22,7 @@ namespace backend.Services
             string? externalMobileNumber = null,
             string? photoUrl = null);
         Task<bool> DeleteUserAsync(string id);
-        Task<bool> UpdateUserAsync(string id, string? mobileNumber, List<string> roles, string? name = null);
-        Task<bool> UpdateExternalIdentityDetailsAsync(
-            string userId, 
-            string provider, 
-            string providerId,
-            string? sub = null,
-            string? name = null,
-            string? email = null,
-            string? mobileNumber = null,
-            string? photoUrl = null);
-        Task<bool> LinkExternalIdentityAsync(
-            string id, 
-            string provider, 
-            string providerId, 
-            string? sub = null, 
-            string? name = null, 
-            string? email = null, 
-            string? mobileNumber = null,
-            string? photoUrl = null);
+        Task<bool> UpdateUserAsync(User user);
+        Task SaveChangesAsync(bool force = true);
     }
 }

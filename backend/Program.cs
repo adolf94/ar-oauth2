@@ -61,6 +61,7 @@ var host = new HostBuilder()
         services.AddScoped<IRoleDefinitionService, RoleDefinitionService>();
         services.AddScoped<IUserClientScopeService, UserClientScopeService>();
         services.AddScoped<ICrossAppTrustService, CrossAppTrustService>();
+        services.AddScoped<IDbHelper, DbHelper>();
         services.AddScoped<DatabaseInitializer>();
         services.AddScoped<ILogService, LogService>();
 

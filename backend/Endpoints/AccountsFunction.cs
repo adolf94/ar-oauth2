@@ -24,43 +24,6 @@ namespace backend.Endpoints
             _tokenService = tokenService;
         }
 
-        [Function("GetRecentAccounts")]
-        public async Task<IActionResult> GetRecentAccounts(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/accounts/recent")] HttpRequest req)
-        {
-            var userIds = AuthHelper.GetRecentUserIds(req);
-            if (userIds.Count == 0) return new OkObjectResult(new List<object>());
-
-            var result = new List<object>();
-            foreach (var id in userIds)
-            {
-                var user = await _userService.GetByIdAsync(id);
-                if (user != null)
-                {
-                    result.Add(new { 
-                        id = user.Id, 
-                        email = user.Email,
-                        provider = "unknown" // We don't store provider in cookie, but it's enough for UX
-                    });
-                }
-            }
-
-            return new OkObjectResult(result);
-        }
-
-        [Function("RemoveRecentAccount")]
-        public IActionResult RemoveRecentAccount(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/accounts/recent/{userId}")] HttpRequest req, string userId)
-        {
-            var userIds = AuthHelper.GetRecentUserIds(req);
-            if (userIds.Contains(userId))
-            {
-                userIds.Remove(userId);
-                AuthHelper.SetRecentUserIds(req.HttpContext.Response, userIds);
-            }
-            return new OkResult();
-        }
-
         [Function("GetCurrentUser")]
         public async Task<IActionResult> GetCurrentUser(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/accounts/me")] HttpRequest req)

@@ -30,13 +30,15 @@ namespace backend.Endpoints
         private readonly IAuthCodeService _authCodeService;
         private readonly IUserService _userService;
         private readonly ITokenService _tokenService;
+        private readonly IDbHelper _dbHelper;
 
-        public LoginFunction(ILogger<LoginFunction> logger, IAuthCodeService authCodeService, IUserService userService, ITokenService tokenService)
+        public LoginFunction(ILogger<LoginFunction> logger, IAuthCodeService authCodeService, IUserService userService, ITokenService tokenService, IDbHelper dbHelper)
         {
             _logger = logger;
             _authCodeService = authCodeService;
             _userService = userService;
             _tokenService = tokenService;
+            _dbHelper = dbHelper;
         }
 
         [Function("Login")]
@@ -74,6 +76,8 @@ namespace backend.Endpoints
                     var googlePicture = payload.Picture;
                     _logger.LogInformation("Successfully validated Google ID token for {Email}", targetEmail);
 
+                    _dbHelper.BeginBatch();
+
                     var user = await _userService.GetByEmailAsync(targetEmail);
                     if (user == null)
                     {
@@ -82,11 +86,8 @@ namespace backend.Endpoints
                     }
                     
                     // Sync details from Google on every login (Name, Picture, etc.)
-                    await _userService.UpdateExternalIdentityDetailsAsync(user.Id, "google", payload.Subject, payload.Subject, googleName, targetEmail, null, googlePicture);
+                    user.SyncIdentity("google", payload.Subject, payload.Subject, googleName, targetEmail, null, googlePicture);
                     
-                    // Refresh user object after sync
-                    user = await _userService.GetByIdAsync(user.Id) ?? user;
-
                     // Generate authorization code
                     var authCode = await _authCodeService.CreateAuthCodeAsync(
                         loginReq.client_id,
@@ -96,6 +97,8 @@ namespace backend.Endpoints
                         loginReq.code_challenge_method,
                         loginReq.scope
                     );
+
+                    await _dbHelper.CommitBatchAsync();
                     
                     // Set active session cookie (HttpOnly/Secure)
                     var sessionToken = _tokenService.GenerateSessionToken(user);

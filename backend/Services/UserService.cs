@@ -10,10 +10,12 @@ namespace backend.Services
     public class UserService : IUserService
     {
         private readonly AppDbContext _dbContext;
+        private readonly IDbHelper _dbHelper;
 
-        public UserService(AppDbContext dbContext)
+        public UserService(AppDbContext dbContext, IDbHelper dbHelper)
         {
             _dbContext = dbContext;
+            _dbHelper = dbHelper;
         }
 
         public async Task<List<User>> GetAllUsersAsync()
@@ -72,7 +74,7 @@ namespace backend.Services
             }
 
             _dbContext.Users.Add(newUser);
-            await _dbContext.SaveChangesAsync();
+            await _dbHelper.SaveChangesAsync();
             return newUser;
         }
 
@@ -82,91 +84,21 @@ namespace backend.Services
             if (user == null) return false;
 
             _dbContext.Users.Remove(user);
-            await _dbContext.SaveChangesAsync();
+            await _dbHelper.SaveChangesAsync();
             return true;
         }
 
-        public async Task<bool> UpdateUserAsync(string id, string? mobileNumber, List<string> roles, string? name = null)
+        public async Task<bool> UpdateUserAsync(User user)
         {
-            var user = await _dbContext.Users.FindAsync(id);
             if (user == null) return false;
 
-            user.MobileNumber = mobileNumber;
-            user.Roles = roles;
-            
-            if (name != null)
-            {
-                user.Name = name;
-            }
-
-            await _dbContext.SaveChangesAsync();
+            await _dbHelper.SaveChangesAsync(force: false);
             return true;
         }
 
-        public async Task<bool> UpdateExternalIdentityDetailsAsync(
-            string userId, 
-            string provider, 
-            string providerId,
-            string? sub = null,
-            string? name = null,
-            string? email = null,
-            string? mobileNumber = null,
-            string? photoUrl = null)
+        public async Task SaveChangesAsync(bool force = true)
         {
-            var user = await _dbContext.Users.FindAsync(userId);
-            if (user == null) return false;
-
-            var identity = user.ExternalIdentities.FirstOrDefault(i => i.Provider == provider);
-            if (identity == null)
-            {
-                identity = new UserIdentity { Provider = provider, ProviderId = providerId };
-                user.ExternalIdentities.Add(identity);
-            }
-
-            // Always update provider ID just in case
-            identity.ProviderId = providerId;
-            
-            // Update additional fields if provided
-            if (sub != null) identity.Sub = sub;
-            if (name != null) identity.Name = name;
-            if (email != null) identity.Email = email;
-            if (mobileNumber != null) identity.MobileNumber = mobileNumber;
-            if (photoUrl != null) identity.PhotoUrl = photoUrl;
-
-            // Sync to top-level user properties if they are empty or dummy, or always for picture
-            if (name != null && string.IsNullOrEmpty(user.Name)) user.Name = name;
-            if (mobileNumber != null && string.IsNullOrEmpty(user.MobileNumber)) user.MobileNumber = mobileNumber;
-            
-            // Use the last login's photo as the main profile picture
-            if (photoUrl != null)
-            {
-                user.Picture = photoUrl;
-            }
-
-            if (!string.IsNullOrEmpty(email)) 
-            {
-                if (string.IsNullOrEmpty(user.Email) || user.Email.EndsWith("@telegram.org"))
-                {
-                    user.Email = email;
-                }
-            }
-
-            await _dbContext.SaveChangesAsync();
-            return true;
+            await _dbHelper.SaveChangesAsync(force);
         }
-
-        public async Task<bool> LinkExternalIdentityAsync(
-            string id, 
-            string provider, 
-            string providerId, 
-            string? sub = null, 
-            string? name = null, 
-            string? email = null, 
-            string? mobileNumber = null,
-            string? photoUrl = null)
-        {
-            return await UpdateExternalIdentityDetailsAsync(id, provider, providerId, sub, name, email, mobileNumber, photoUrl);
-        }
-
     }
 }

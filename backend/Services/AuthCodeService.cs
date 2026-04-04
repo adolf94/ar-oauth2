@@ -11,10 +11,12 @@ namespace backend.Services
     public class AuthCodeService : IAuthCodeService
     {
         private readonly AppDbContext _dbContext;
+        private readonly IDbHelper _dbHelper;
 
-        public AuthCodeService(AppDbContext dbContext)
+        public AuthCodeService(AppDbContext dbContext, IDbHelper dbHelper)
         {
             _dbContext = dbContext;
+            _dbHelper = dbHelper;
         }
 
         public async Task<AuthCode> CreateAuthCodeAsync(string clientId, string userId, string redirectUri, string codeChallenge, string codeChallengeMethod, string scopes)
@@ -31,7 +33,7 @@ namespace backend.Services
             };
 
             _dbContext.AuthCodes.Add(authCode);
-            await _dbContext.SaveChangesAsync();
+            await _dbHelper.SaveChangesAsync(force: false);
 
             return authCode;
         }
@@ -61,7 +63,7 @@ namespace backend.Services
             try
             {
                 _dbContext.AuthCodes.Remove(authCode);
-                await _dbContext.SaveChangesAsync();
+                await _dbHelper.SaveChangesAsync();
             }
             catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Azure.Cosmos.CosmosException { StatusCode: System.Net.HttpStatusCode.NotFound })
             {

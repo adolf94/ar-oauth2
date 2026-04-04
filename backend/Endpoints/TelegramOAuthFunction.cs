@@ -28,6 +28,7 @@ namespace backend.Endpoints
         private readonly IRsaKeyService _rsaKeyService;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ITokenService _tokenService;
+        private readonly IDbHelper _dbHelper;
 
         private const string RelayStateCookieName = "tg_relay_state";
 
@@ -39,7 +40,8 @@ namespace backend.Endpoints
             Configuration.AppConfig appConfig,
             IRsaKeyService rsaKeyService,
             IHttpClientFactory httpClientFactory,
-            ITokenService tokenService)
+            ITokenService tokenService,
+            IDbHelper dbHelper)
         {
             _logger = logger;
             _authCodeService = authCodeService;
@@ -49,6 +51,7 @@ namespace backend.Endpoints
             _rsaKeyService = rsaKeyService;
             _httpClientFactory = httpClientFactory;
             _tokenService = tokenService;
+            _dbHelper = dbHelper;
         }
 
         [Function("AuthTelegramLogin")]
@@ -266,6 +269,8 @@ namespace backend.Endpoints
             // 4. Map Telegram User
             var user = await _userService.GetByExternalIdentityAsync("telegram", telegramId);
             
+            _dbHelper.BeginBatch();
+
             // Link Mode: If we have a link token, we MUST link to that user
             if (!string.IsNullOrEmpty(linkToken))
             {
@@ -281,8 +286,11 @@ namespace backend.Endpoints
                     var targetUserId = linkPrincipal.FindFirst("link_user_id")?.Value;
                     if (!string.IsNullOrEmpty(targetUserId)) {
                         _logger.LogInformation("Linking Telegram {Id} to user {TargetUserId} via link_token", telegramId, targetUserId);
-                        await _userService.LinkExternalIdentityAsync(targetUserId, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
-                        user = await _userService.GetByIdAsync(targetUserId);
+                        var targetUser = await _userService.GetByIdAsync(targetUserId);
+                        if (targetUser != null) {
+                            targetUser.SyncIdentity("telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
+                            user = targetUser;
+                        }
                     }
                 } catch (Exception ex) {
                     _logger.LogWarning(ex, "Invalid link_token in Telegram callback.");
@@ -306,13 +314,12 @@ namespace backend.Endpoints
                 {
                     // If user found by email, link the telegram identity
                     _logger.LogInformation("Found existing user by email {Email}, linking Telegram {Id}", user.Email, telegramId);
-                    await _userService.LinkExternalIdentityAsync(user.Id, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
+                    user.SyncIdentity("telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
                 }
             }
 
             // Sync user details from Telegram (stores everything in ExternalIdentities + some top-level sync)
-            await _userService.UpdateExternalIdentityDetailsAsync(user.Id, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
-            user = await _userService.GetByIdAsync(user.Id) ?? user; // Refresh local user object
+            user.SyncIdentity("telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
 
             // 5. Generate Atlas Rig code
             var authCode = await _authCodeService.CreateAuthCodeAsync(
@@ -324,10 +331,7 @@ namespace backend.Endpoints
                 spScope
             );
 
-            // 6. Update Recently Used Accounts cookie
-            var recentIds = AuthHelper.GetRecentUserIds(req);
-            recentIds.Insert(0, user.Id);
-            AuthHelper.SetRecentUserIds(req.HttpContext.Response, recentIds);
+            await _dbHelper.CommitBatchAsync();
 
             // 7. Set active session cookie (HttpOnly/Secure)
             var sessionToken = _tokenService.GenerateSessionToken(user);

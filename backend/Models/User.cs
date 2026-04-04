@@ -51,5 +51,50 @@ namespace backend.Models
 
         [Newtonsoft.Json.JsonConverter(typeof(UserIdentityConverter))]
         public List<UserIdentity> ExternalIdentities { get; set; } = new(); // Mapping for Google `sub` or Passkey `credentialId`
+
+        public void SyncIdentity(
+            string provider, 
+            string providerId,
+            string? sub = null,
+            string? name = null,
+            string? email = null,
+            string? mobileNumber = null,
+            string? photoUrl = null)
+        {
+            var identity = ExternalIdentities.Find(i => i.Provider == provider);
+            if (identity == null)
+            {
+                identity = new UserIdentity { Provider = provider, ProviderId = providerId };
+                ExternalIdentities.Add(identity);
+            }
+
+            // Always update provider ID just in case
+            identity.ProviderId = providerId;
+            
+            // Update additional fields if provided
+            if (sub != null) identity.Sub = sub;
+            if (name != null) identity.Name = name;
+            if (email != null) identity.Email = email;
+            if (mobileNumber != null) identity.MobileNumber = mobileNumber;
+            if (photoUrl != null) identity.PhotoUrl = photoUrl;
+
+            // Sync to top-level user properties if they are empty or dummy, or always for picture
+            if (name != null && string.IsNullOrEmpty(Name)) Name = name;
+            if (mobileNumber != null && string.IsNullOrEmpty(MobileNumber)) MobileNumber = mobileNumber;
+            
+            // Use the last login's photo as the main profile picture
+            if (photoUrl != null)
+            {
+                Picture = photoUrl;
+            }
+
+            if (!string.IsNullOrEmpty(email)) 
+            {
+                if (string.IsNullOrEmpty(Email) || Email.EndsWith("@telegram.org"))
+                {
+                    Email = email;
+                }
+            }
+        }
     }
 }
