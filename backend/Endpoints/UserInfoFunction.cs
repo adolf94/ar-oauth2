@@ -61,6 +61,8 @@ namespace backend.Endpoints
             var response = new UserInfoResponse
             {
                 Sub            = user.Id,
+                Name           = user.Name,
+                Picture        = user.Picture,
                 Email          = user.Email,
                 EmailVerified  = true,
                 Roles          = user.Roles.ToArray()
@@ -74,6 +76,12 @@ namespace backend.Endpoints
     {
         [JsonPropertyName("sub")]
         public string Sub { get; set; } = string.Empty;
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("picture")]
+        public string? Picture { get; set; }
 
         [JsonPropertyName("email")]
         public string Email { get; set; } = string.Empty;

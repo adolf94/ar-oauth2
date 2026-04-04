@@ -53,6 +53,7 @@ namespace backend.Endpoints
                 user.Id,
                 user.Email,
                 user.Name,
+                user.Picture,
                 user.MobileNumber,
                 user.Roles,
                 ExternalIdentities = user.ExternalIdentities.Select(i => new {
@@ -61,7 +62,8 @@ namespace backend.Endpoints
                     i.Sub,
                     i.Name,
                     i.Email,
-                    i.MobileNumber
+                    i.MobileNumber,
+                    i.PhotoUrl
                 }).ToList()
             });
         }

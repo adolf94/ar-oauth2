@@ -1,4 +1,4 @@
-import { Box, Button, Card, CardContent, Chip, CircularProgress, Divider, List, ListItem, ListItemText, Typography, IconButton, Container, TextField } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, CircularProgress, Divider, List, ListItem, ListItemText, Typography, IconButton, Container, TextField, Avatar } from '@mui/material';
 import { Delete as DeleteIcon, Fingerprint as FingerprintIcon, AdminPanelSettings as AdminIcon } from '@mui/icons-material';
 import { useEffect, useState } from 'react';
 import * as Passwordless from '@passwordlessdev/passwordless-client';
@@ -16,6 +16,7 @@ interface UserProfile {
   id: string;
   email: string;
   name?: string;
+  picture?: string;
   mobileNumber?: string;
   roles: string[];
   externalIdentities: Array<{
@@ -25,6 +26,7 @@ interface UserProfile {
     name?: string;
     email?: string;
     mobileNumber?: string;
+    photoUrl?: string;
   }>;
 }
 
@@ -171,6 +173,25 @@ export default function Profile() {
             Profile Details
           </Typography>
           <Divider sx={{ mb: 3 }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 4 }}>
+            <Avatar 
+              src={profile?.picture} 
+              sx={{ 
+                width: 100, 
+                height: 100, 
+                fontSize: '2rem',
+                bgcolor: 'primary.main',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}
+            >
+              {profile?.name?.[0] || profile?.email[0].toUpperCase()}
+            </Avatar>
+            <Box>
+              <Typography variant="h5" fontWeight={700}>{profile?.name || 'Incomplete Profile'}</Typography>
+              <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>{profile?.email}</Typography>
+            </Box>
+          </Box>
+
           <Box sx={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 2 }}>
             <Typography color="text.secondary" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>Name</Typography>
             <Typography fontWeight={600}>{profile?.name || '-'}</Typography>
@@ -211,6 +232,17 @@ export default function Profile() {
                 <Box key={pvd} sx={{ p: 2, bgcolor: 'background.default', borderRadius: 2, border: 1, borderColor: 'divider' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: identity ? 1.5 : 0 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar 
+                        src={identity?.photoUrl} 
+                        sx={{ 
+                          width: 32, 
+                          height: 32, 
+                          bgcolor: pvd === 'google' ? '#ea4335' : (pvd === 'telegram' ? '#0088cc' : 'divider'),
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        {pvd[0].toUpperCase()}
+                      </Avatar>
                       <Typography fontWeight={700} sx={{ textTransform: 'capitalize' }}>{pvd}</Typography>
                       {identity ? (
                         <Chip label="Connected" size="small" color="success" sx={{ height: 20 }} />
