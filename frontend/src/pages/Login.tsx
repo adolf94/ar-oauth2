@@ -14,6 +14,7 @@ const p = new Passwordless.Client({
 
 interface LoginSearchParams {
   client_id?: string;
+  response_type?: string;
   redirect_uri?: string;
   state?: string;
   code_challenge?: string;
@@ -30,6 +31,7 @@ export default function Login() {
   const handleGoogleLogin = (hint?: string) => {
     const params = new URLSearchParams();
     if (searchParams.client_id) params.append('client_id', searchParams.client_id);
+    if (searchParams.response_type) params.append('response_type', searchParams.response_type);
     if (searchParams.redirect_uri) params.append('redirect_uri', searchParams.redirect_uri);
     if (searchParams.state) params.append('state', searchParams.state);
     if (searchParams.code_challenge) params.append('code_challenge', searchParams.code_challenge);
@@ -42,6 +44,7 @@ export default function Login() {
   const handleTelegramLogin = () => {
     const params = new URLSearchParams();
     if (searchParams.client_id) params.append('client_id', searchParams.client_id);
+    if (searchParams.response_type) params.append('response_type', searchParams.response_type);
     if (searchParams.redirect_uri) params.append('redirect_uri', searchParams.redirect_uri);
     if (searchParams.state) params.append('state', searchParams.state);
     if (searchParams.code_challenge) params.append('code_challenge', searchParams.code_challenge);
@@ -63,6 +66,7 @@ export default function Login() {
       const response = await api.post('/passkey/login', {
         token,
         client_id: searchParams.client_id,
+        response_type: searchParams.response_type,
         redirect_uri: searchParams.redirect_uri,
         state: searchParams.state,
         code_challenge: searchParams.code_challenge,

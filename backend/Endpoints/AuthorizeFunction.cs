@@ -94,6 +94,7 @@ namespace backend.Endpoints
             // 5. Redirect to the local SPA login page, forwarding all PKCE params
             var loginUrl = $"/login" +
                            $"?client_id={Uri.EscapeDataString(request.client_id)}" +
+                           $"&response_type={Uri.EscapeDataString(request.response_type)}" +
                            $"&redirect_uri={Uri.EscapeDataString(request.redirect_uri)}" +
                            $"&state={Uri.EscapeDataString(request.state)}" +
                            $"&code_challenge={Uri.EscapeDataString(request.code_challenge)}" +

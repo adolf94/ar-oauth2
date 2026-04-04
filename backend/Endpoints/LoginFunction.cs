@@ -17,6 +17,7 @@ namespace backend.Endpoints
         
         // For testing only: email lookup with no password.
         public string client_id { get; set; } = string.Empty;
+        public string response_type { get; set; } = "code";
         public string redirect_uri { get; set; } = string.Empty;
         public string code_challenge { get; set; } = string.Empty;
         public string code_challenge_method { get; set; } = string.Empty;
