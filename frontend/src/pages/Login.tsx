@@ -117,7 +117,9 @@ export default function Login() {
     // Actually, if they are already logged in to 'ar-auth', they just need to 'Authorize' the client.
 
     if (searchParams.client_id && searchParams.redirect_uri) {
-      window.location.href = `/api/authorize?${new URLSearchParams(window.location.search).toString()}`;
+      const search = new URLSearchParams(window.location.search);
+      search.set('skip_prompt', 'true');
+      window.location.href = `/api/authorize?${search.toString()}`;
     } else {
       // Direct login to ar-auth, go to profile
       window.location.href = '/profile';

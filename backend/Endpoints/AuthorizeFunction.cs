@@ -63,13 +63,15 @@ namespace backend.Endpoints
                 return RedirectToError("invalid_request", "PKCE (code_challenge) is required for public clients.");
 
             // 4. Check for existing session (Auto-Login)
-            var prompt = (string?)req.Query["prompt"] ?? string.Empty;
-            if (prompt != "select_account" && prompt != "login")
+            // We only bypass the login page if explicitly requested via skip_prompt=true
+            // Otherwise, we let the SPA show the "Active Session" UI first.
+            var skipPrompt = (string?)req.Query["skip_prompt"] == "true";
+            if (skipPrompt)
             {
                 var sessionUserId = AuthHelper.GetSessionUserId(req, _tokenService);
                 if (!string.IsNullOrEmpty(sessionUserId))
                 {
-                    _logger.LogInformation("Found active session for user {UserId}. Bypassing login page.", sessionUserId);
+                    _logger.LogInformation("Bypassing login via skip_prompt=true for user {UserId}.", sessionUserId);
                     
                     var authCode = await _authCodeService.CreateAuthCodeAsync(
                         request.client_id,
