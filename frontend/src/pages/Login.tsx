@@ -1,11 +1,10 @@
-import { Box, Button, Card, CardContent, Typography, Container, Avatar, IconButton, Divider, Paper } from '@mui/material';
-import { Google as GoogleIcon, Fingerprint as FingerprintIcon, Telegram as TelegramIcon, DeleteOutline as DeleteIcon, History as HistoryIcon } from '@mui/icons-material';
+import { Box, Button, Card, CardContent, Typography, Container, Avatar, Divider, Paper } from '@mui/material';
+import { Google as GoogleIcon, Fingerprint as FingerprintIcon, Telegram as TelegramIcon } from '@mui/icons-material';
 import { useSearch } from '@tanstack/react-router';
 import * as Passwordless from '@passwordlessdev/passwordless-client';
 import api from '../api';
 import ThemeSwitcher from '../components/ThemeSwitcher';
-import { getRecentAccounts, removeRecentAccount, saveRecentAccount } from '../storage';
-import type { RecentAccount } from '../storage';
+import { saveRecentAccount } from '../storage';
 import { useState, useEffect } from 'react';
 
 const PASSKEY_PUBLIC_KEY = 'arapps:public:45993b214ebd42049727f9a86f56b5eb';
@@ -24,7 +23,6 @@ interface LoginSearchParams {
 
 export default function Login() {
   const searchParams = useSearch({ strict: false }) as LoginSearchParams;
-  const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
   const [activeSession, setActiveSession] = useState<{ id: string, email: string, name: string, picture?: string } | null>(null);
 
   // No duplicate useEffect here anymore!
@@ -98,16 +96,6 @@ export default function Login() {
   };
 
   useEffect(() => {
-    const fetchRecent = async () => {
-      try {
-        const res = await api.get('/accounts/recent');
-        setRecentAccounts(res.data);
-      } catch (err) {
-        console.error('Failed to fetch recent accounts', err);
-        // Fallback to localStorage for robustness
-        setRecentAccounts(getRecentAccounts());
-      }
-    };
 
     const fetchActiveSession = async () => {
       try {
@@ -118,7 +106,6 @@ export default function Login() {
       }
     };
 
-    fetchRecent();
     fetchActiveSession();
   }, []);
 
@@ -138,25 +125,6 @@ export default function Login() {
   };
 
   // ... (existing handlers)
-
-  const handleRecentClick = (account: RecentAccount) => {
-    if (account.provider === 'google') {
-      handleGoogleLogin(account.email);
-    } else {
-      handlePasskeyLogin();
-    }
-  };
-
-  const handleDeleteRecent = async (e: React.MouseEvent, account: RecentAccount) => {
-    e.stopPropagation();
-    try {
-      await api.delete(`/accounts/recent/${account.id}`);
-      removeRecentAccount(account.email); // Keep local storage in sync as fallback
-      setRecentAccounts(prev => prev.filter(a => a.id !== account.id));
-    } catch (err) {
-      console.error('Delete failed', err);
-    }
-  };
 
   return (
     <Box

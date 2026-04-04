@@ -12,6 +12,17 @@ interface UserModel {
   roles: string[];
 }
 
+interface UserScope {
+  id: string;
+  clientId: string;
+  scope: string;
+}
+
+interface ClientModel {
+  clientId: string;
+  name: string;
+}
+
 export default function AdminUsers() {
   const [users, setUsers] = useState<UserModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,8 +34,8 @@ export default function AdminUsers() {
   // App-specific scopes state
   const [scopesDialogOpen, setScopesDialogOpen] = useState(false);
   const [manageScopesUser, setManageScopesUser] = useState<UserModel | null>(null);
-  const [userScopes, setUserScopes] = useState<any[]>([]);
-  const [apps, setApps] = useState<any[]>([]);
+  const [userScopes, setUserScopes] = useState<UserScope[]>([]);
+  const [apps, setApps] = useState<ClientModel[]>([]);
   const [availableOptions, setAvailableOptions] = useState<string[]>([]);
   const [newAppScope, setNewAppScope] = useState({ clientId: '', scope: '' });
   const [addingScope, setAddingScope] = useState(false);
@@ -36,8 +47,8 @@ export default function AdminUsers() {
         setUsers(res.data);
         setLoading(false);
       })
-      .catch(err => {
-        console.error('Error fetching users:', err);
+      .catch(() => {
+        console.error('Error fetching users');
         setLoading(false);
       });
   };
@@ -81,9 +92,10 @@ export default function AdminUsers() {
       setOpen(false);
       setNewUser({ email: '', mobileNumber: '', roles: ['user'] });
       fetchUsers();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save user:', err);
-      alert(`Error: ${err.response?.data || err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Error: ${errorMessage}`);
     } finally {
       setSubmitting(false);
     }
@@ -131,10 +143,10 @@ export default function AdminUsers() {
           api.get(`/manage/scopes?client_id=${clientId}`)
         ]);
         
-        const roles = rolesRes.data.map((r: any) => r.name);
-        const scopes = scopesRes.data
-          .filter((s: any) => !s.isClientOnly)
-          .map((s: any) => s.name);
+        const roles = (rolesRes.data as { name: string }[]).map(r => r.name);
+        const scopes = (scopesRes.data as { name: string, isClientOnly: boolean }[])
+          .filter(s => !s.isClientOnly)
+          .map(s => s.name);
         
         // Combine and unique
         const combined = Array.from(new Set([...roles, ...scopes]));
@@ -157,8 +169,8 @@ export default function AdminUsers() {
       // Refresh
       const res = await api.get(`/manage/users/${manageScopesUser.id}/scopes`);
       setUserScopes(res.data);
-    } catch (err: any) {
-      alert(err.response?.data || 'Failed to assign scope');
+    } catch {
+      alert('Failed to assign scope');
     } finally {
       setAddingScope(false);
     }

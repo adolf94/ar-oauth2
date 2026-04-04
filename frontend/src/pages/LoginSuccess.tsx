@@ -22,7 +22,7 @@ export default function LoginSuccess() {
       saveRecentAccount({ 
         id, 
         email, 
-        provider: (provider as any) || 'google' 
+        provider: (provider as 'google' | 'telegram' | 'passkey' | 'unknown') || 'google' 
       });
     }
 

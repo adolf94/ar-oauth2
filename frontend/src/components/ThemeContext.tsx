@@ -11,6 +11,7 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useThemeControl = () => {
   const context = useContext(ThemeContext);
   if (!context) throw new Error('useThemeControl must be used within a ThemeControlProvider');

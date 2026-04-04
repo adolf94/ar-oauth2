@@ -6,8 +6,13 @@ const api = axios.create({
   baseURL: `${getAuthUri()}/api`
 });
 
+interface FailedRequest {
+  resolve: (token: string | null) => void;
+  reject: (error: any) => void;
+}
+
 let isRefreshing = false;
-let failedQueue: any[] = [];
+let failedQueue: FailedRequest[] = [];
 
 const processQueue = (error: any, token: string | null = null) => {
   failedQueue.forEach(prom => {

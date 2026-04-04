@@ -56,8 +56,8 @@ export default function Profile() {
         email: res.data.email,
         provider: 'unknown' // We don't know the exact provider from profile alone, but email is what matters
       });
-    } catch (err) {
-      console.error('Failed to fetch profile', err);
+    } catch {
+      console.error('Failed to fetch profile');
     }
   };
 
@@ -65,13 +65,20 @@ export default function Profile() {
     try {
       const res = await api.get('/passkey/list');
       setPasskeys(res.data);
-    } catch (err) {
-      console.error('Failed to fetch passkeys', err);
+    } catch {
+      console.error('Failed to fetch passkeys');
     }
   };
 
   useEffect(() => {
-    Promise.all([fetchProfile(), fetchPasskeys()]).finally(() => setLoading(false));
+    const fetchData = async () => {
+      try {
+        await Promise.all([fetchProfile(), fetchPasskeys()]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
   }, []);
 
   const handleRegisterPasskey = async (nickname: string) => {
@@ -90,8 +97,8 @@ export default function Profile() {
         alert('Passkey registered successfully!');
         fetchPasskeys();
       }
-    } catch (err) {
-      console.error('Registration error', err);
+    } catch {
+      console.error('Registration error');
       alert('An error occurred during registration.');
     }
   };
@@ -101,8 +108,8 @@ export default function Profile() {
     try {
       await api.delete(`/passkey/${credentialId}`);
       setPasskeys(prev => prev.filter(pk => pk.credentialId !== credentialId));
-    } catch (err) {
-      console.error('Delete error', err);
+    } catch {
+      console.error('Delete error');
     }
   };
 
@@ -122,8 +129,8 @@ export default function Profile() {
       params.append('state', 'linking'); // For UI state
       
       window.location.href = `/api/login/${provider}?${params.toString()}`;
-    } catch (err) {
-      console.error('Linking error', err);
+    } catch {
+      console.error('Linking error');
       alert('Failed to initiate linking process.');
     }
   };
@@ -226,7 +233,7 @@ export default function Profile() {
           <Divider sx={{ mb: 3 }} />
           
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {['google', 'telegram'].map(pvd => {
+            {(['google', 'telegram'] as const).map(pvd => {
               const identity = profile?.externalIdentities.find(i => i.provider === pvd);
               return (
                 <Box key={pvd} sx={{ p: 2, bgcolor: 'background.default', borderRadius: 2, border: 1, borderColor: 'divider' }}>
@@ -251,7 +258,7 @@ export default function Profile() {
                       )}
                     </Box>
                     {!identity && (
-                      <Button variant="outlined" size="small" onClick={() => handleLinkAccount(pvd as any)}>Link {pvd}</Button>
+                      <Button variant="outlined" size="small" onClick={() => handleLinkAccount(pvd)}>Link {pvd}</Button>
                     )}
                   </Box>
                   

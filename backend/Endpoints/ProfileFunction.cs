@@ -72,6 +72,7 @@ namespace backend.Endpoints
         public async Task<IActionResult> CreateLinkToken(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/profile/link-token")] HttpRequest req)
         {
+            await Task.Yield();
             var (principal, error) = AuthHelper.ValidateToken(req, _tokenService, _logger);
             if (error != null) return error;
 

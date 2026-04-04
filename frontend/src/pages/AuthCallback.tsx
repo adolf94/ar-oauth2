@@ -56,9 +56,9 @@ export default function AuthCallback() {
         } else {
           throw new Error('No access token returned from server.');
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('AuthCallback error:', err);
-        setError(err.message);
+        setError(err instanceof Error ? err.message : 'Unknown error');
       }
     };
 

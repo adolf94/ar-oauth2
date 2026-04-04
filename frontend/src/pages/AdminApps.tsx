@@ -9,7 +9,7 @@ interface AppModel {
   clientId: string;
   redirectUris: string[];
   allowedScopes: string[];
-  clientSecrets?: any[];
+  clientSecrets?: { id: string; description: string; createdAt: string }[];
   roleCount?: number;
   scopeCount?: number;
   autoGrantCount?: number;
@@ -46,16 +46,16 @@ export default function AdminApps() {
   const [scopesDialogOpen, setScopesDialogOpen] = useState(false);
   const [newScope, setNewScope] = useState({ name: '', description: '', isAdminApproved: false, isClientOnly: false });
   const [addingScope, setAddingScope] = useState(false);
-  const [appScopes, setAppScopes] = useState<any[]>([]);
+  const [appScopes, setAppScopes] = useState<{ id: string; name: string; fullScopeName: string; isAdminApproved: boolean; isClientOnly: boolean; description?: string }[]>([]);
 
-  const [appRoles, setAppRoles] = useState<any[]>([]);
+  const [appRoles, setAppRoles] = useState<{ id: string; name: string; description?: string }[]>([]);
   const [newRole, setNewRole] = useState({ name: '', description: '' });
   const [addingRole, setAddingRole] = useState(false);
   
-  const [appTrusts, setAppTrusts] = useState<any[]>([]);
+  const [appTrusts, setAppTrusts] = useState<{ id: string; targetClientId: string; scopeName: string }[]>([]);
   const [newTrust, setNewTrust] = useState({ targetClientId: '', scopeName: '' });
   const [addingTrust, setAddingTrust] = useState(false);
-  const [targetAppScopes, setTargetAppScopes] = useState<any[]>([]);
+  const [targetAppScopes, setTargetAppScopes] = useState<{ name: string }[]>([]);
 
   const [activeTab, setActiveTab] = useState(0);
 
@@ -128,9 +128,10 @@ export default function AdminApps() {
       }
       setOpen(false);
       fetchApps();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save app:', err);
-      alert(`Error: ${err.response?.data || err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Error: ${errorMessage}`);
     } finally {
       setSubmitting(false);
     }
@@ -162,8 +163,8 @@ export default function AdminApps() {
       setShowSecretDialog(true);
       setSecretsDialogOpen(false);
       fetchApps();
-    } catch (err: any) {
-      console.error('Failed to add secret:', err);
+    } catch {
+      console.error('Failed to add secret');
       alert('Failed to add secret');
     } finally {
       setAddingSecret(false);
@@ -216,8 +217,8 @@ export default function AdminApps() {
       // Refresh
       const res = await api.get(`/manage/trusts?client_id=${manageScopesApp.clientId}`);
       setAppTrusts(res.data);
-    } catch (err: any) {
-      alert(err.response?.data || 'Failed to add trust');
+    } catch {
+      alert('Failed to add trust');
     } finally {
       setAddingTrust(false);
     }
@@ -228,7 +229,7 @@ export default function AdminApps() {
     try {
       await api.delete(`/manage/trusts/${id}?client_id=${manageScopesApp?.clientId}`);
       setAppTrusts(appTrusts.filter(t => t.id !== id));
-    } catch (err) {
+    } catch {
       alert('Failed to delete trust');
     }
   };
@@ -246,8 +247,8 @@ export default function AdminApps() {
       // Refresh
       const res = await api.get(`/manage/roles?client_id=${manageScopesApp.clientId}`);
       setAppRoles(res.data);
-    } catch (err: any) {
-      alert(err.response?.data || 'Failed to add role');
+    } catch {
+      alert('Failed to add role');
     } finally {
       setAddingRole(false);
     }
@@ -258,7 +259,7 @@ export default function AdminApps() {
     try {
       await api.delete(`/manage/roles/${id}?client_id=${manageScopesApp?.clientId}`);
       setAppRoles(appRoles.filter(r => r.id !== id));
-    } catch (err) {
+    } catch {
       alert('Failed to delete role');
     }
   };
@@ -278,8 +279,8 @@ export default function AdminApps() {
       // Refresh
       const res = await api.get(`/manage/scopes?client_id=${manageScopesApp.clientId}`);
       setAppScopes(res.data);
-    } catch (err: any) {
-      alert(err.response?.data || 'Failed to add scope');
+    } catch {
+      alert('Failed to add scope');
     } finally {
       setAddingScope(false);
     }
@@ -290,7 +291,7 @@ export default function AdminApps() {
     try {
       await api.delete(`/manage/scopes/${id}`);
       setAppScopes(appScopes.filter(s => s.id !== id));
-    } catch (err) {
+    } catch {
       alert('Failed to delete scope');
     }
   };
