@@ -30,11 +30,11 @@ namespace backend.Endpoints
         {
             var userId = AuthHelper.GetSessionUserId(req, _tokenService);
             if (string.IsNullOrEmpty(userId))
-                return new NotFoundResult();
+                return new UnauthorizedObjectResult(new { error = "no_session" });
 
             var user = await _userService.GetByIdAsync(userId);
             if (user == null)
-                return new NotFoundResult();
+                return new UnauthorizedObjectResult(new { error = "user_not_found" });
 
             return new OkObjectResult(new
             {

@@ -62,7 +62,7 @@ namespace backend.Endpoints
             {
                 HttpOnly = true,
                 Secure = true,
-                SameSite = SameSiteMode.Strict,
+                SameSite = SameSiteMode.Lax, // Using Lax to survive redirects from apps
                 Expires = DateTime.UtcNow.AddDays(30),
                 Path = "/"
             };
@@ -74,7 +74,9 @@ namespace backend.Endpoints
             if (req.Cookies.TryGetValue(SessionCookieName, out var token) && !string.IsNullOrEmpty(token))
             {
                 var principal = tokenService.ValidateSessionToken(token);
-                return principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+                // Try sub and NameIdentifier as JwtSecurityTokenHandler often maps sub to NameIdentifier
+                return principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value 
+                    ?? principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             }
             return null;
         }
@@ -86,7 +88,7 @@ namespace backend.Endpoints
                 Path = "/",
                 HttpOnly = true,
                 Secure = true,
-                SameSite = SameSiteMode.Strict
+                SameSite = SameSiteMode.Lax
             });
         }
     }
