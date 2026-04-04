@@ -14,5 +14,9 @@ namespace backend.Services
         Task<string> RotateRefreshTokenAsync(Token oldToken, string? sid = null);
         string GenerateIdToken(User user, Client client, string nonce = "", string? sid = null);
         Task<bool> IsScopeAuthorizedAsync(User user, Client client, string scope);
+
+        // ── Session Token (Internal ar-auth session) ──
+        string GenerateSessionToken(User user);
+        ClaimsPrincipal? ValidateSessionToken(string token);
     }
 }

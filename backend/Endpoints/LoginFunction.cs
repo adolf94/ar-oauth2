@@ -29,12 +29,14 @@ namespace backend.Endpoints
         private readonly ILogger<LoginFunction> _logger;
         private readonly IAuthCodeService _authCodeService;
         private readonly IUserService _userService;
+        private readonly ITokenService _tokenService;
 
-        public LoginFunction(ILogger<LoginFunction> logger, IAuthCodeService authCodeService, IUserService userService)
+        public LoginFunction(ILogger<LoginFunction> logger, IAuthCodeService authCodeService, IUserService userService, ITokenService tokenService)
         {
             _logger = logger;
             _authCodeService = authCodeService;
             _userService = userService;
+            _tokenService = tokenService;
         }
 
         [Function("Login")]
@@ -69,21 +71,21 @@ namespace backend.Endpoints
 
                     targetEmail = payload.Email;
                     var googleName = payload.Name;
+                    var googlePicture = payload.Picture;
                     _logger.LogInformation("Successfully validated Google ID token for {Email}", targetEmail);
 
                     var user = await _userService.GetByEmailAsync(targetEmail);
                     if (user == null)
                     {
                         _logger.LogInformation("User {Email} not found — creating user from Google provisioning.", targetEmail);
-                        user = await _userService.CreateUserAsync(targetEmail, null, new System.Collections.Generic.List<string> { "user" }, "google", payload.Subject, googleName);
+                        user = await _userService.CreateUserAsync(targetEmail, null, new System.Collections.Generic.List<string> { "user" }, "google", payload.Subject, googleName, payload.Subject, targetEmail, null, googlePicture);
                     }
                     
-                    // Always use the name from Google
-                    if (!string.IsNullOrEmpty(googleName) && user.Name != googleName)
-                    {
-                        await _userService.UpdateUserAsync(user.Id, user.MobileNumber, user.Roles, googleName);
-                        user.Name = googleName;
-                    }
+                    // Sync details from Google on every login (Name, Picture, etc.)
+                    await _userService.UpdateExternalIdentityDetailsAsync(user.Id, "google", payload.Subject, payload.Subject, googleName, targetEmail, null, googlePicture);
+                    
+                    // Refresh user object after sync
+                    user = await _userService.GetByIdAsync(user.Id) ?? user;
 
                     // Generate authorization code
                     var authCode = await _authCodeService.CreateAuthCodeAsync(
@@ -94,6 +96,10 @@ namespace backend.Endpoints
                         loginReq.code_challenge_method,
                         loginReq.scope
                     );
+                    
+                    // Set active session cookie (HttpOnly/Secure)
+                    var sessionToken = _tokenService.GenerateSessionToken(user);
+                    AuthHelper.SetSessionCookie(req.HttpContext.Response, sessionToken);
 
                     // Return code + state so the SPA can redirect to the redirect_uri
                     return new OkObjectResult(new { code = authCode.Id, state = loginReq.state });

@@ -45,14 +45,16 @@ namespace backend.Services
             string? name = null,
             string? sub = null,
             string? externalEmail = null,
-            string? externalMobileNumber = null)
+            string? externalMobileNumber = null,
+            string? photoUrl = null)
         {
             var newUser = new User
             {
                 Email = email,
                 MobileNumber = mobileNumber,
                 Roles = roles,
-                Name = name ?? string.Empty
+                Name = name ?? string.Empty,
+                Picture = photoUrl
             };
 
             if (!string.IsNullOrEmpty(externalProvider) && !string.IsNullOrEmpty(externalId))
@@ -64,7 +66,8 @@ namespace backend.Services
                     Sub = sub,
                     Name = name,
                     Email = externalEmail,
-                    MobileNumber = externalMobileNumber
+                    MobileNumber = externalMobileNumber,
+                    PhotoUrl = photoUrl
                 });
             }
 
@@ -107,7 +110,8 @@ namespace backend.Services
             string? sub = null,
             string? name = null,
             string? email = null,
-            string? mobileNumber = null)
+            string? mobileNumber = null,
+            string? photoUrl = null)
         {
             var user = await _dbContext.Users.FindAsync(userId);
             if (user == null) return false;
@@ -127,11 +131,18 @@ namespace backend.Services
             if (name != null) identity.Name = name;
             if (email != null) identity.Email = email;
             if (mobileNumber != null) identity.MobileNumber = mobileNumber;
+            if (photoUrl != null) identity.PhotoUrl = photoUrl;
 
-            // Sync to top-level user properties if they are empty or dummy
+            // Sync to top-level user properties if they are empty or dummy, or always for picture
             if (name != null && string.IsNullOrEmpty(user.Name)) user.Name = name;
             if (mobileNumber != null && string.IsNullOrEmpty(user.MobileNumber)) user.MobileNumber = mobileNumber;
             
+            // Use the last login's photo as the main profile picture
+            if (photoUrl != null)
+            {
+                user.Picture = photoUrl;
+            }
+
             if (!string.IsNullOrEmpty(email)) 
             {
                 if (string.IsNullOrEmpty(user.Email) || user.Email.EndsWith("@telegram.org"))
@@ -151,9 +162,10 @@ namespace backend.Services
             string? sub = null, 
             string? name = null, 
             string? email = null, 
-            string? mobileNumber = null)
+            string? mobileNumber = null,
+            string? photoUrl = null)
         {
-            return await UpdateExternalIdentityDetailsAsync(id, provider, providerId, sub, name, email, mobileNumber);
+            return await UpdateExternalIdentityDetailsAsync(id, provider, providerId, sub, name, email, mobileNumber, photoUrl);
         }
 
     }

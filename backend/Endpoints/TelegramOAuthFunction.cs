@@ -27,6 +27,7 @@ namespace backend.Endpoints
         private readonly Configuration.AppConfig _appConfig;
         private readonly IRsaKeyService _rsaKeyService;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ITokenService _tokenService;
 
         private const string RelayStateCookieName = "tg_relay_state";
 
@@ -37,7 +38,8 @@ namespace backend.Endpoints
             IClientService clientService,
             Configuration.AppConfig appConfig,
             IRsaKeyService rsaKeyService,
-            IHttpClientFactory httpClientFactory)
+            IHttpClientFactory httpClientFactory,
+            ITokenService tokenService)
         {
             _logger = logger;
             _authCodeService = authCodeService;
@@ -46,6 +48,7 @@ namespace backend.Endpoints
             _appConfig = appConfig;
             _rsaKeyService = rsaKeyService;
             _httpClientFactory = httpClientFactory;
+            _tokenService = tokenService;
         }
 
         [Function("AuthTelegramLogin")]
@@ -258,6 +261,7 @@ namespace backend.Endpoints
             var telegramLastName = claims.FirstOrDefault(c => c.Type == "family_name")?.Value;
             var telegramName = claims.FirstOrDefault(c => c.Type == "name")?.Value 
                   ?? (string.IsNullOrEmpty(telegramLastName) ? telegramFirstName : $"{telegramFirstName} {telegramLastName}");
+            var telegramPhotoUrl = claims.FirstOrDefault(c => c.Type == "picture")?.Value;
 
             // 4. Map Telegram User
             var user = await _userService.GetByExternalIdentityAsync("telegram", telegramId);
@@ -277,7 +281,7 @@ namespace backend.Endpoints
                     var targetUserId = linkPrincipal.FindFirst("link_user_id")?.Value;
                     if (!string.IsNullOrEmpty(targetUserId)) {
                         _logger.LogInformation("Linking Telegram {Id} to user {TargetUserId} via link_token", telegramId, targetUserId);
-                        await _userService.LinkExternalIdentityAsync(targetUserId, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone);
+                        await _userService.LinkExternalIdentityAsync(targetUserId, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
                         user = await _userService.GetByIdAsync(targetUserId);
                     }
                 } catch (Exception ex) {
@@ -296,18 +300,18 @@ namespace backend.Endpoints
                 if (user == null)
                 {
                     _logger.LogInformation("Creating new Telegram user with Id {Id} and Sub {Sub}", telegramId, telegramSub);
-                    user = await _userService.CreateUserAsync(telegramEmail ?? string.Empty, telegramPhone, new List<string> { "unregistered" }, "telegram", telegramId, telegramName, telegramSub, telegramEmail, telegramPhone);
+                    user = await _userService.CreateUserAsync(telegramEmail ?? string.Empty, telegramPhone, new List<string> { "unregistered" }, "telegram", telegramId, telegramName, telegramSub, telegramEmail, telegramPhone, telegramPhotoUrl);
                 }
                 else
                 {
                     // If user found by email, link the telegram identity
                     _logger.LogInformation("Found existing user by email {Email}, linking Telegram {Id}", user.Email, telegramId);
-                    await _userService.LinkExternalIdentityAsync(user.Id, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone);
+                    await _userService.LinkExternalIdentityAsync(user.Id, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
                 }
             }
 
             // Sync user details from Telegram (stores everything in ExternalIdentities + some top-level sync)
-            await _userService.UpdateExternalIdentityDetailsAsync(user.Id, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone);
+            await _userService.UpdateExternalIdentityDetailsAsync(user.Id, "telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
             user = await _userService.GetByIdAsync(user.Id) ?? user; // Refresh local user object
 
             // 5. Generate Atlas Rig code
@@ -324,6 +328,10 @@ namespace backend.Endpoints
             var recentIds = AuthHelper.GetRecentUserIds(req);
             recentIds.Insert(0, user.Id);
             AuthHelper.SetRecentUserIds(req.HttpContext.Response, recentIds);
+
+            // 7. Set active session cookie (HttpOnly/Secure)
+            var sessionToken = _tokenService.GenerateSessionToken(user);
+            AuthHelper.SetSessionCookie(req.HttpContext.Response, sessionToken);
 
             // Cleanup cookie
             req.HttpContext.Response.Cookies.Delete(RelayStateCookieName);

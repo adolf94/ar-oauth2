@@ -89,6 +89,10 @@ namespace backend.Endpoints
                 recentIds.Insert(0, user.Id);
                 AuthHelper.SetRecentUserIds(req.HttpContext.Response, recentIds);
 
+                // 5. Set active session cookie (HttpOnly/Secure)
+                var sessionToken = _tokenService.GenerateSessionToken(user);
+                AuthHelper.SetSessionCookie(req.HttpContext.Response, sessionToken);
+
                 return new OkObjectResult(new { code = authCode.Id, state = requestBody.state, user = new { id = user.Id, email = user.Email } });
             }
             catch (PasswordlessApiException ex)

@@ -60,5 +60,26 @@ namespace backend.Endpoints
             }
             return new OkResult();
         }
+
+        [Function("GetCurrentUser")]
+        public async Task<IActionResult> GetCurrentUser(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/accounts/me")] HttpRequest req)
+        {
+            var userId = AuthHelper.GetSessionUserId(req, _tokenService);
+            if (string.IsNullOrEmpty(userId))
+                return new NotFoundResult();
+
+            var user = await _userService.GetByIdAsync(userId);
+            if (user == null)
+                return new NotFoundResult();
+
+            return new OkObjectResult(new
+            {
+                id = user.Id,
+                email = user.Email,
+                name = user.Name,
+                picture = user.Picture
+            });
+        }
     }
 }

@@ -26,10 +26,18 @@ namespace backend.Endpoints
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "{*path}")] HttpRequest req,
             string? path)
         {
-            // Do not intercept API requests or well-known endpoints
-            if (path != null && path.StartsWith("api/"))
+            // Do not intercept API requests or well-known endpoints, but fallback to /profile for the API root itself
+            if (path != null)
             {
-                return new NotFoundResult();
+                if (path == "api" || path == "api/")
+                {
+                    return new RedirectResult("/profile");
+                }
+                
+                if (path.StartsWith("api/"))
+                {
+                    return new NotFoundResult();
+                }
             }
 
             var baseDir = AppContext.BaseDirectory;

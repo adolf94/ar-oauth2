@@ -356,6 +356,11 @@ namespace backend.Services
                 new Claim("nonce", nonce)
             };
 
+            if (!string.IsNullOrEmpty(user.Picture))
+            {
+                claims.Add(new Claim("picture", user.Picture));
+            }
+
             if (!string.IsNullOrEmpty(sid))
             {
                 claims.Add(new Claim("sid", sid));
@@ -424,6 +429,64 @@ namespace backend.Services
                 }
 
                 return isAuthorized;
+            }
+        }
+
+        // ── Session Token (Internal ar-auth session) ────────────────
+
+        public string GenerateSessionToken(User user)
+        {
+            var key = _rsaKeyService.GetSigningKey();
+
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, user.Id),
+                new Claim(JwtRegisteredClaimNames.Email, user.Email),
+                new Claim(JwtRegisteredClaimNames.Name, user.Name ?? string.Empty),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim("type", "session")
+            };
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddDays(30), // Persistent session
+                Issuer = Issuer,
+                Audience = Issuer, // Internal audience
+                SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
+            };
+
+            var handler = new JwtSecurityTokenHandler();
+            return handler.WriteToken(handler.CreateToken(tokenDescriptor));
+        }
+
+        public ClaimsPrincipal? ValidateSessionToken(string token)
+        {
+            var keys = _rsaKeyService.GetValidationKeys();
+            var handler = new JwtSecurityTokenHandler();
+
+            try
+            {
+                var tvp = new TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKeys = keys,
+                    ValidateIssuer = true,
+                    ValidIssuer = Issuer,
+                    ValidateAudience = true,
+                    ValidAudience = Issuer,
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.Zero
+                };
+
+                var principal = handler.ValidateToken(token, tvp, out _);
+                if (principal.FindFirst("type")?.Value != "session") return null;
+
+                return principal;
+            }
+            catch
+            {
+                return null;
             }
         }
     }

@@ -25,6 +25,7 @@ interface LoginSearchParams {
 export default function Login() {
   const searchParams = useSearch({ strict: false }) as LoginSearchParams;
   const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
+  const [activeSession, setActiveSession] = useState<{ id: string, email: string, name: string, picture?: string } | null>(null);
 
   // No duplicate useEffect here anymore!
 
@@ -107,8 +108,34 @@ export default function Login() {
         setRecentAccounts(getRecentAccounts());
       }
     };
+
+    const fetchActiveSession = async () => {
+      try {
+        const res = await api.get('/accounts/me');
+        setActiveSession(res.data);
+      } catch {
+        setActiveSession(null);
+      }
+    };
+
     fetchRecent();
+    fetchActiveSession();
   }, []);
+
+  const handleContinueAs = async () => {
+    if (!activeSession) return;
+
+    // If we're in an OAuth flow, we can trigger the authorize bypass by just calling it again
+    // but the easiest way is to just call the login provider handler or a new 'session' login handler.
+    // Actually, if they are already logged in to 'ar-auth', they just need to 'Authorize' the client.
+
+    if (searchParams.client_id && searchParams.redirect_uri) {
+      window.location.href = `/api/authorize?${new URLSearchParams(window.location.search).toString()}`;
+    } else {
+      // Direct login to ar-auth, go to profile
+      window.location.href = '/profile';
+    }
+  };
 
   // ... (existing handlers)
 
@@ -159,74 +186,64 @@ export default function Login() {
           </Typography>
         </Box>
 
-        <Card sx={{ 
+        <Card sx={{
           boxShadow: (theme) => theme.palette.mode === 'dark' ? '0 8px 32px rgba(0,0,0,0.8)' : '0 8px 32px rgba(0,0,0,0.1)',
           borderRadius: 3,
           overflow: 'visible'
         }}>
           <CardContent sx={{ p: 4 }}>
-            {recentAccounts.length > 0 && (
+            {activeSession && (
               <Box sx={{ mb: 4 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, opacity: 0.7 }}>
-                  <HistoryIcon fontSize="small" />
                   <Typography variant="caption" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
-                    Recently Used
+                    Active Session
                   </Typography>
                 </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  {recentAccounts.map((account) => (
-                    <Paper
-                      key={account.email}
-                      elevation={0}
-                      onClick={() => handleRecentClick(account)}
-                      sx={{
-                        p: 1.5,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 2,
-                        cursor: 'pointer',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 2,
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          borderColor: 'primary.main',
-                          bgcolor: 'action.hover',
-                          transform: 'translateY(-2px)'
-                        }
-                      }}
-                    >
-                      <Avatar sx={{ 
-                        bgcolor: account.provider === 'google' ? '#ea4335' : 'secondary.main',
-                        width: 32,
-                        height: 32,
-                        fontSize: '0.8rem'
-                      }}>
-                        {account.email[0].toUpperCase()}
-                      </Avatar>
-                      <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                        <Typography variant="body2" fontWeight={700} noWrap>
-                          {account.email}
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                           <Typography variant="caption" color="text.secondary">
-                            via {account.provider}
-                          </Typography>
-                        </Box>
-                      </Box>
-                      <IconButton size="small" onClick={(e) => handleDeleteRecent(e, account)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Paper>
-                  ))}
-                </Box>
+                <Paper
+                  elevation={0}
+                  onClick={handleContinueAs}
+                  sx={{
+                    p: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    cursor: 'pointer',
+                    border: '2px solid',
+                    borderColor: 'primary.main',
+                    borderRadius: 2,
+                    transition: 'all 0.2s',
+                    bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(88, 101, 242, 0.1)' : 'rgba(88, 101, 242, 0.05)',
+                    '&:hover': {
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 4px 12px rgba(88, 101, 242, 0.2)'
+                    }
+                  }}
+                >
+                  <Avatar src={activeSession.picture} sx={{ bgcolor: 'primary.main' }}>
+                    {activeSession.name?.[0] || activeSession.email[0].toUpperCase()}
+                  </Avatar>
+                  <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                    <Typography variant="body1" fontWeight={700} noWrap>
+                      {activeSession.name || activeSession.email}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {activeSession.email}
+                    </Typography>
+                  </Box>
+                  <Button variant="contained" size="small" sx={{ borderRadius: 1.5, fontWeight: 700 }}>
+                    Continue
+                  </Button>
+                </Paper>
+
                 <Box sx={{ my: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Divider sx={{ flex: 1 }} />
-                  <Typography variant="caption" color="text.disabled" sx={{ fontWeight: 700 }}>OR USE OTHER</Typography>
+                  <Typography variant="caption" color="text.disabled" sx={{ fontWeight: 700 }}>OR SWITCH ACCOUNT</Typography>
                   <Divider sx={{ flex: 1 }} />
                 </Box>
               </Box>
             )}
+
+
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Button

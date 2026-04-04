@@ -8,6 +8,7 @@ using backend.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace backend.Endpoints
 {
@@ -71,6 +72,44 @@ namespace backend.Endpoints
                 Path = "/"
             };
             res.Cookies.Append("ar_auth_recent", JsonSerializer.Serialize(ids.Distinct().Take(5)), options);
+        }
+
+        // ── Session Cookie (ar_auth_session) ──
+
+        private const string SessionCookieName = "ar_auth_session";
+
+        public static void SetSessionCookie(HttpResponse res, string sessionToken)
+        {
+            var options = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Expires = DateTime.UtcNow.AddDays(30),
+                Path = "/"
+            };
+            res.Cookies.Append(SessionCookieName, sessionToken, options);
+        }
+
+        public static string? GetSessionUserId(HttpRequest req, ITokenService tokenService)
+        {
+            if (req.Cookies.TryGetValue(SessionCookieName, out var token) && !string.IsNullOrEmpty(token))
+            {
+                var principal = tokenService.ValidateSessionToken(token);
+                return principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+            }
+            return null;
+        }
+
+        public static void ClearSessionCookie(HttpResponse res)
+        {
+            res.Cookies.Delete(SessionCookieName, new CookieOptions
+            {
+                Path = "/",
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict
+            });
         }
     }
 }

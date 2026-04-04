@@ -32,6 +32,7 @@ namespace backend.Endpoints
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly Configuration.AppConfig _appConfig;
         private readonly IRsaKeyService _rsaKeyService;
+        private readonly ITokenService _tokenService;
 
         public GoogleOAuthFunction(
             ILogger<GoogleOAuthFunction> logger,
@@ -39,7 +40,8 @@ namespace backend.Endpoints
             IUserService userService,
             IHttpClientFactory httpClientFactory,
             Configuration.AppConfig appConfig,
-            IRsaKeyService rsaKeyService)
+            IRsaKeyService rsaKeyService,
+            ITokenService tokenService)
         {
             _logger = logger;
             _authCodeService = authCodeService;
@@ -47,6 +49,7 @@ namespace backend.Endpoints
             _httpClientFactory = httpClientFactory;
             _appConfig = appConfig;
             _rsaKeyService = rsaKeyService;
+            _tokenService = tokenService;
         }
 
         [Function("GoogleOAuthLogin")]
@@ -302,6 +305,10 @@ namespace backend.Endpoints
             var recentIds = AuthHelper.GetRecentUserIds(req);
             recentIds.Insert(0, user.Id);
             AuthHelper.SetRecentUserIds(req.HttpContext.Response, recentIds);
+
+            // 6. Set active session cookie (HttpOnly/Secure)
+            var sessionToken = _tokenService.GenerateSessionToken(user);
+            AuthHelper.SetSessionCookie(req.HttpContext.Response, sessionToken);
 
             // 5. Redirect back to Atlas Rig Frontend success page first
             var atlasRigHost = _appConfig.Jwt.Issuer.Replace("/api", ""); 

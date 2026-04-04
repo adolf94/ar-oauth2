@@ -13,11 +13,19 @@ namespace backend.Endpoints
     {
         private readonly ILogger<AuthorizeFunction> _logger;
         private readonly IClientService _clientService;
+        private readonly IAuthCodeService _authCodeService;
+        private readonly ITokenService _tokenService;
 
-        public AuthorizeFunction(ILogger<AuthorizeFunction> logger, IClientService clientService)
+        public AuthorizeFunction(
+            ILogger<AuthorizeFunction> logger, 
+            IClientService clientService,
+            IAuthCodeService authCodeService,
+            ITokenService tokenService)
         {
             _logger = logger;
             _clientService = clientService;
+            _authCodeService = authCodeService;
+            _tokenService = tokenService;
         }
 
         [Function("Authorize")]
@@ -54,7 +62,34 @@ namespace backend.Endpoints
             if ((client.ClientSecrets == null || !client.ClientSecrets.Any()) && string.IsNullOrEmpty(request.code_challenge))
                 return RedirectToError("invalid_request", "PKCE (code_challenge) is required for public clients.");
 
-            // 3. Redirect to the local SPA login page, forwarding all PKCE params
+            // 4. Check for existing session (Auto-Login)
+            var prompt = (string?)req.Query["prompt"] ?? string.Empty;
+            if (prompt != "select_account" && prompt != "login")
+            {
+                var sessionUserId = AuthHelper.GetSessionUserId(req, _tokenService);
+                if (!string.IsNullOrEmpty(sessionUserId))
+                {
+                    _logger.LogInformation("Found active session for user {UserId}. Bypassing login page.", sessionUserId);
+                    
+                    var authCode = await _authCodeService.CreateAuthCodeAsync(
+                        request.client_id,
+                        sessionUserId,
+                        request.redirect_uri,
+                        request.code_challenge,
+                        request.code_challenge_method,
+                        request.scope
+                    );
+
+                    var successUrl = request.redirect_uri;
+                    successUrl += (successUrl.Contains("?") ? "&" : "?") + $"code={System.Uri.EscapeDataString(authCode.Id)}";
+                    if (!string.IsNullOrEmpty(request.state))
+                        successUrl += $"&state={System.Uri.EscapeDataString(request.state)}";
+
+                    return new RedirectResult(successUrl);
+                }
+            }
+
+            // 5. Redirect to the local SPA login page, forwarding all PKCE params
             var loginUrl = $"/login" +
                            $"?client_id={Uri.EscapeDataString(request.client_id)}" +
                            $"&redirect_uri={Uri.EscapeDataString(request.redirect_uri)}" +
