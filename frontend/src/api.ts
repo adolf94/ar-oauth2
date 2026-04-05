@@ -60,7 +60,10 @@ api.interceptors.response.use(
       const refreshToken = sessionStorage.getItem('refresh_token');
       if (!refreshToken) {
         isRefreshing = false;
-        window.location.href = '/';
+        // Don't redirect if we are already on the login page or the request is specifically checking the session
+        if (window.location.pathname !== '/login' && !originalRequest.url?.includes('accounts/me')) {
+          window.location.href = '/login';
+        }
         return Promise.reject(error);
       }
 
@@ -83,7 +86,9 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         sessionStorage.clear();
-        window.location.href = '/';
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
