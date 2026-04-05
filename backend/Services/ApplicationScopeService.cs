@@ -28,7 +28,7 @@ namespace backend.Services
         {
             var existing = await _dbContext.ApplicationScopes
                 .Where(s => s.ClientId == clientId && s.Name == name)
-                .AnyAsync();
+                .FirstOrDefaultAsync() != null;
                 
             if (existing) throw new Exception("Scope already exists for this client");
 

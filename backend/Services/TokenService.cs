@@ -70,7 +70,8 @@ namespace backend.Services
                         if (!isUserAuthorized)
                         {
                             isUserAuthorized = await _dbContext.ApplicationScopes
-                                .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsClientOnly == true);
+                                .Where(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsClientOnly == true)
+                                .FirstOrDefaultAsync() != null;
                         }
 
                         // Admin Bypass: If user is a global admin, they are authorized for any trusted cross-app scope
@@ -183,11 +184,13 @@ namespace backend.Services
         {
             var key = _rsaKeyService.GetSigningKey();
             
-            // 1. Fetch own Client-Only scopes
-            var clientOnlyScopes = await _dbContext.ApplicationScopes
+            // Fetch and map in-memory to avoid translation issue with FullScopeName computed property
+            var clientOnlyScopes = (await _dbContext.ApplicationScopes
                 .Where(s => s.ClientId == client.ClientId && s.IsClientOnly == true)
-                .Select(s => s.FullScopeName)
-                .ToListAsync();
+                .Select(s => new { s.ClientId, s.Name })
+                .ToListAsync())
+                .Select(s => $"api://{s.ClientId}/{s.Name}")
+                .ToList();
 
             // 2. Fetch Cross-App Trusts and their associated IsClientOnly scopes
             var trusts = await _dbContext.CrossAppTrusts
@@ -397,12 +400,14 @@ namespace backend.Services
                 if (trust == null) return false;
 
                 var isUserAuthorized = await _dbContext.UserClientScopes
-                    .AnyAsync(ucs => ucs.UserId == user.Id && ucs.ClientId == trust.TargetClientId && ucs.Scope == trust.ScopeName);
+                    .Where(ucs => ucs.UserId == user.Id && ucs.ClientId == trust.TargetClientId && ucs.Scope == trust.ScopeName)
+                    .FirstOrDefaultAsync() != null;
 
                 if (!isUserAuthorized)
                 {
                     isUserAuthorized = await _dbContext.ApplicationScopes
-                        .AnyAsync(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsClientOnly == true);
+                        .Where(s => s.ClientId == trust.TargetClientId && s.Name == trust.ScopeName && s.IsClientOnly == true)
+                        .FirstOrDefaultAsync() != null;
                 }
 
                 if (!isUserAuthorized && user.Roles.Contains("admin"))
@@ -415,8 +420,10 @@ namespace backend.Services
             else
             {
                 // 1. Check if the scope is Client-Only (Bypass user logic)
+                // Avoid using FullScopeName in DB query as it's not mapped
                 var isClientOnly = await _dbContext.ApplicationScopes
-                    .AnyAsync(s => s.ClientId == client.ClientId && (s.Name == scope || s.FullScopeName == scope) && s.IsClientOnly == true);
+                    .Where(s => s.ClientId == client.ClientId && s.Name == scope && s.IsClientOnly == true)
+                    .FirstOrDefaultAsync() != null;
                 if (isClientOnly) return true;
 
                 // 2. Check User-specific assignments
@@ -427,7 +434,8 @@ namespace backend.Services
                 if (!isAuthorized)
                 {
                     isAuthorized = await _dbContext.ApplicationScopes
-                        .AnyAsync(s => s.ClientId == client.ClientId && (s.Name == scope || s.FullScopeName == scope) && s.IsAdminApproved == true);
+                        .Where(s => s.ClientId == client.ClientId && s.Name == scope && s.IsAdminApproved == true)
+                        .FirstOrDefaultAsync() != null;
                 }
 
                 return isAuthorized;
