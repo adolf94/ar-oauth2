@@ -96,5 +96,14 @@ namespace backend.Models
                 }
             }
         }
+
+        public void RemoveIdentity(string provider)
+        {
+            var identity = ExternalIdentities.Find(i => i.Provider == provider);
+            if (identity != null)
+            {
+                ExternalIdentities.Remove(identity);
+            }
+        }
     }
 }

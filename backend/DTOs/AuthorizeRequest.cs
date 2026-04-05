@@ -9,5 +9,6 @@ namespace backend.DTOs
         public string code_challenge { get; set; } = string.Empty;
         public string code_challenge_method { get; set; } = string.Empty;
         public string scope { get; set; } = string.Empty;
+        public string? link_token { get; set; }
     }
 }

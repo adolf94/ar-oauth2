@@ -24,5 +24,7 @@ namespace backend.Services
         Task<bool> DeleteUserAsync(string id);
         Task<bool> UpdateUserAsync(User user);
         Task SaveChangesAsync(bool force = true);
+
+        Task LinkTelegramIdentityAsync(User user, string telegramId, string? sub = null, string? name = null, string? email = null, string? phone = null, string? photoUrl = null);
     }
 }

@@ -26,6 +26,7 @@ namespace backend.Endpoints
         public string? code_challenge { get; set; }
         public string? code_challenge_method { get; set; }
         public string? scope { get; set; }
+        public string? link_token { get; set; }
     }
 
     public class PasskeyFunction
@@ -79,6 +80,23 @@ namespace backend.Endpoints
                 }
 
                 _dbHelper.BeginBatch();
+
+                // 2.5 Handle Identity Linking
+                if (!string.IsNullOrEmpty(requestBody.link_token))
+                {
+                    try {
+                        var linkPrincipal = _tokenService.ValidateLinkToken(requestBody.link_token);
+                        if (linkPrincipal != null) {
+                            var telegramId = linkPrincipal.FindFirst("telegram_id")?.Value;
+                            if (!string.IsNullOrEmpty(telegramId)) {
+                                _logger.LogInformation("Linking Telegram {Id} to user {UserId} via Passkey login", telegramId, user.Id);
+                                await _userService.LinkTelegramIdentityAsync(user, telegramId);
+                            }
+                        }
+                    } catch (Exception ex) {
+                        _logger.LogWarning(ex, "Failed to process link_token in Passkey login.");
+                    }
+                }
 
                 // 3. Generate Atlas Rig code (Authorization Code Flow with PKCE)
                 var authCode = await _authCodeService.CreateAuthCodeAsync(

@@ -100,5 +100,20 @@ namespace backend.Services
         {
             await _dbHelper.SaveChangesAsync(force);
         }
+
+        public async Task LinkTelegramIdentityAsync(User user, string telegramId, string? sub = null, string? name = null, string? email = null, string? phone = null, string? photoUrl = null)
+        {
+            // 1. Check if this Telegram ID is already linked to ANOTHER user
+            var existingUser = await GetByExternalIdentityAsync("telegram", telegramId);
+            if (existingUser != null && existingUser.Id != user.Id)
+            {
+                // Override and Warn: Unlink from the old user
+                existingUser.RemoveIdentity("telegram");
+                // Note: We don't SaveChanges here yet, we'll do it when the main user is updated or via DbHelper batch
+            }
+
+            // 2. Link to the target user
+            user.SyncIdentity("telegram", telegramId, sub, name, email, phone, photoUrl);
+        }
     }
 }

@@ -20,6 +20,7 @@ interface LoginSearchParams {
   code_challenge?: string;
   code_challenge_method?: string;
   scope?: string;
+  link_token?: string;
 }
 
 export default function Login() {
@@ -37,6 +38,7 @@ export default function Login() {
     if (searchParams.code_challenge) params.append('code_challenge', searchParams.code_challenge);
     if (searchParams.code_challenge_method) params.append('code_challenge_method', searchParams.code_challenge_method);
     if (searchParams.scope) params.append('scope', searchParams.scope);
+    if (searchParams.link_token) params.append('link_token', searchParams.link_token);
     if (hint) params.append('login_hint', hint);
     window.location.href = `/api/login/google?${params.toString()}`;
   };
@@ -50,6 +52,7 @@ export default function Login() {
     if (searchParams.code_challenge) params.append('code_challenge', searchParams.code_challenge);
     if (searchParams.code_challenge_method) params.append('code_challenge_method', searchParams.code_challenge_method);
     if (searchParams.scope) params.append('scope', searchParams.scope);
+    if (searchParams.link_token) params.append('link_token', searchParams.link_token);
     window.location.href = `/api/login/telegram?${params.toString()}`;
   };
 
@@ -71,7 +74,8 @@ export default function Login() {
         state: searchParams.state,
         code_challenge: searchParams.code_challenge,
         code_challenge_method: searchParams.code_challenge_method,
-        scope: searchParams.scope
+        scope: searchParams.scope,
+        link_token: searchParams.link_token
       });
       const data = response.data;
       if (data.code && searchParams.redirect_uri) {

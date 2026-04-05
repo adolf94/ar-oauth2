@@ -18,5 +18,9 @@ namespace backend.Services
         // ── Session Token (Internal ar-auth session) ──
         string GenerateSessionToken(User user);
         ClaimsPrincipal? ValidateSessionToken(string token);
+
+        // ── Link Token (Identity Linking) ──
+        string GenerateLinkToken(string telegramId, string clientId, string requestorId);
+        ClaimsPrincipal? ValidateLinkToken(string token);
     }
 }

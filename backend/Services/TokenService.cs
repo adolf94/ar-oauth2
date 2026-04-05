@@ -499,5 +499,60 @@ namespace backend.Services
                 return null;
             }
         }
+
+        public string GenerateLinkToken(string telegramId, string clientId, string requestorId)
+        {
+            var key = _rsaKeyService.GetSigningKey();
+            var claims = new List<Claim>
+            {
+                new Claim("telegram_id", telegramId),
+                new Claim("client_id", clientId),
+                new Claim("requestor_id", requestorId),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim("type", "link")
+            };
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddMinutes(15),
+                Issuer = Issuer,
+                Audience = Issuer,
+                SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
+            };
+
+            var handler = new JwtSecurityTokenHandler();
+            return handler.WriteToken(handler.CreateToken(tokenDescriptor));
+        }
+
+        public ClaimsPrincipal? ValidateLinkToken(string token)
+        {
+            var keys = _rsaKeyService.GetValidationKeys();
+            var handler = new JwtSecurityTokenHandler();
+
+            try
+            {
+                var tvp = new TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKeys = keys,
+                    ValidateIssuer = true,
+                    ValidIssuer = Issuer,
+                    ValidateAudience = true,
+                    ValidAudience = Issuer,
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.Zero
+                };
+
+                var principal = handler.ValidateToken(token, tvp, out _);
+                if (principal.FindFirst("type")?.Value != "link") return null;
+
+                return principal;
+            }
+            catch
+            {
+                return null;
+            }
+        }
     }
 }

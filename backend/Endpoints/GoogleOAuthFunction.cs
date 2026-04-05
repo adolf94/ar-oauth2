@@ -242,29 +242,39 @@ namespace backend.Endpoints
             
             _dbHelper.BeginBatch();
 
-            // Link Mode: If we have a link token, we MUST link to that user
+            string? linkedTelegramId = null;
+            // Link Mode: If we have a link token, we MUST link to that (or provided) user
             if (!string.IsNullOrEmpty(linkToken))
             {
                 try {
-                    var linkTokenHandler = new JwtSecurityTokenHandler();
-                    var linkPrincipal = linkTokenHandler.ValidateToken(linkToken, new TokenValidationParameters {
-                        ValidateIssuerSigningKey = true,
-                        IssuerSigningKeys = _rsaKeyService.GetValidationKeys(),
-                        ValidateIssuer = false,
-                        ValidateAudience = false,
-                        ValidateLifetime = true
-                    }, out _);
-                    var targetUserId = linkPrincipal.FindFirst("link_user_id")?.Value;
-                    if (!string.IsNullOrEmpty(targetUserId)) {
-                        _logger.LogInformation("Linking Google {Sub} to user {TargetUserId} via link_token", googleSub, targetUserId);
-                        var targetUser = await _userService.GetByIdAsync(targetUserId);
-                        if (targetUser != null) {
-                            targetUser.SyncIdentity("google", googleSub, googleSub, googleName, googleEmail, null, googlePicture);
-                            user = targetUser;
+                    // 1. Try to validate as a new signed Link Token (with telegram_id)
+                    var linkPrincipal = _tokenService.ValidateLinkToken(linkToken);
+                    if (linkPrincipal != null) {
+                        linkedTelegramId = linkPrincipal.FindFirst("telegram_id")?.Value;
+                        if (!string.IsNullOrEmpty(linkedTelegramId)) {
+                             _logger.LogInformation("Recognized Telegram {Id} to link via Google flow.", linkedTelegramId);
+                        }
+                    } else {
+                        // 2. Fallback to old link_user_id logic (legacy)
+                        var tokenHandler = new JwtSecurityTokenHandler();
+                        var oldPrincipal = tokenHandler.ValidateToken(linkToken, new TokenValidationParameters {
+                            ValidateIssuerSigningKey = true,
+                            IssuerSigningKeys = _rsaKeyService.GetValidationKeys(),
+                            ValidateIssuer = false,
+                            ValidateAudience = false,
+                            ValidateLifetime = true
+                        }, out _);
+                        var targetUserId = oldPrincipal.FindFirst("link_user_id")?.Value;
+                        if (!string.IsNullOrEmpty(targetUserId)) {
+                            _logger.LogInformation("Linking current Google identity to user {TargetUserId} via legacy link_token", targetUserId);
+                            var targetUser = await _userService.GetByIdAsync(targetUserId);
+                            if (targetUser != null) {
+                                user = targetUser;
+                            }
                         }
                     }
                 } catch (Exception ex) {
-                    _logger.LogWarning(ex, "Invalid link_token in Google callback.");
+                    _logger.LogWarning(ex, "Failed to process link_token in Google callback.");
                 }
             }
 
@@ -291,6 +301,12 @@ namespace backend.Endpoints
 
             // Always update identity details and sync top-level fields
             user.SyncIdentity("google", googleSub, googleSub, googleName, googleEmail, null, googlePicture);
+
+            // Link the specific Telegram ID from link_token if present
+            if (!string.IsNullOrEmpty(linkedTelegramId))
+            {
+                 await _userService.LinkTelegramIdentityAsync(user, linkedTelegramId);
+            }
 
             // 4. Generate Atlas Rig code
             var authCode = await _authCodeService.CreateAuthCodeAsync(

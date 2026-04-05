@@ -271,29 +271,39 @@ namespace backend.Endpoints
             
             _dbHelper.BeginBatch();
 
-            // Link Mode: If we have a link token, we MUST link to that user
+            string? linkedTelegramId = null;
+            // Link Mode: If we have a link token, we MUST link to that (or provided) user
             if (!string.IsNullOrEmpty(linkToken))
             {
                 try {
-                    var linkTokenHandler = new JwtSecurityTokenHandler();
-                    var linkPrincipal = linkTokenHandler.ValidateToken(linkToken, new TokenValidationParameters {
-                        ValidateIssuerSigningKey = true,
-                        IssuerSigningKeys = _rsaKeyService.GetValidationKeys(),
-                        ValidateIssuer = false,
-                        ValidateAudience = false,
-                        ValidateLifetime = true
-                    }, out _);
-                    var targetUserId = linkPrincipal.FindFirst("link_user_id")?.Value;
-                    if (!string.IsNullOrEmpty(targetUserId)) {
-                        _logger.LogInformation("Linking Telegram {Id} to user {TargetUserId} via link_token", telegramId, targetUserId);
-                        var targetUser = await _userService.GetByIdAsync(targetUserId);
-                        if (targetUser != null) {
-                            targetUser.SyncIdentity("telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
-                            user = targetUser;
+                    // 1. Try to validate as a new signed Link Token (with telegram_id)
+                    var linkPrincipal = _tokenService.ValidateLinkToken(linkToken);
+                    if (linkPrincipal != null) {
+                        linkedTelegramId = linkPrincipal.FindFirst("telegram_id")?.Value;
+                        if (!string.IsNullOrEmpty(linkedTelegramId)) {
+                            _logger.LogInformation("Linking Telegram {Id} via new-style link_token", linkedTelegramId);
+                        }
+                    } else {
+                        // 2. Fallback to old link_user_id logic (legacy)
+                        var tokenHandler = new JwtSecurityTokenHandler();
+                        var oldPrincipal = tokenHandler.ValidateToken(linkToken, new TokenValidationParameters {
+                            ValidateIssuerSigningKey = true,
+                            IssuerSigningKeys = _rsaKeyService.GetValidationKeys(),
+                            ValidateIssuer = false,
+                            ValidateAudience = false,
+                            ValidateLifetime = true
+                        }, out _);
+                        var targetUserId = oldPrincipal.FindFirst("link_user_id")?.Value;
+                        if (!string.IsNullOrEmpty(targetUserId)) {
+                            _logger.LogInformation("Linking current Telegram identity to user {TargetUserId} via legacy link_token", targetUserId);
+                            var targetUser = await _userService.GetByIdAsync(targetUserId);
+                            if (targetUser != null) {
+                                user = targetUser; // Switch to the target user for linking
+                            }
                         }
                     }
                 } catch (Exception ex) {
-                    _logger.LogWarning(ex, "Invalid link_token in Telegram callback.");
+                    _logger.LogWarning(ex, "Failed to process link_token in Telegram callback.");
                 }
             }
 
@@ -314,12 +324,18 @@ namespace backend.Endpoints
                 {
                     // If user found by email, link the telegram identity
                     _logger.LogInformation("Found existing user by email {Email}, linking Telegram {Id}", user.Email, telegramId);
-                    user.SyncIdentity("telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
+                    await _userService.LinkTelegramIdentityAsync(user, telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
                 }
             }
 
-            // Sync user details from Telegram (stores everything in ExternalIdentities + some top-level sync)
-            user.SyncIdentity("telegram", telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
+            // Sync user details from current Telegram login
+            await _userService.LinkTelegramIdentityAsync(user, telegramId, telegramSub, telegramName, telegramEmail, telegramPhone, telegramPhotoUrl);
+
+            // Also Link the specific ID from link_token if it was different
+            if (!string.IsNullOrEmpty(linkedTelegramId) && linkedTelegramId != telegramId)
+            {
+                 await _userService.LinkTelegramIdentityAsync(user, linkedTelegramId);
+            }
 
             // 5. Generate Atlas Rig code
             var authCode = await _authCodeService.CreateAuthCodeAsync(

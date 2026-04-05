@@ -42,7 +42,8 @@ namespace backend.Endpoints
                 state                 = (string?)req.Query["state"]                 ?? string.Empty,
                 code_challenge        = (string?)req.Query["code_challenge"]        ?? string.Empty,
                 code_challenge_method = (string?)req.Query["code_challenge_method"] ?? string.Empty,
-                scope                 = (string?)req.Query["scope"]                 ?? string.Empty
+                scope                 = (string?)req.Query["scope"]                 ?? string.Empty,
+                link_token            = (string?)req.Query["link_token"]
             };
 
             // 1. Validate required parameters
@@ -99,7 +100,8 @@ namespace backend.Endpoints
                            $"&state={Uri.EscapeDataString(request.state)}" +
                            $"&code_challenge={Uri.EscapeDataString(request.code_challenge)}" +
                            $"&code_challenge_method={Uri.EscapeDataString(request.code_challenge_method)}" +
-                           $"&scope={Uri.EscapeDataString(request.scope)}";
+                           $"&scope={Uri.EscapeDataString(request.scope)}" +
+                           (string.IsNullOrEmpty(request.link_token) ? "" : $"&link_token={Uri.EscapeDataString(request.link_token)}");
 
             return new RedirectResult(loginUrl);
         }
