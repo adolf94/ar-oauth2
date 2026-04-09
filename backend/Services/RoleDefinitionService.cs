@@ -46,7 +46,7 @@ namespace backend.Services
 
         public async Task<bool> DeleteRoleAsync(Guid id)
         {
-            var role = await _dbContext.RoleDefinitions.FindAsync(id);
+            var role = await _dbContext.RoleDefinitions.FirstOrDefaultAsync(r => r.Id == id);
             if (role == null) return false;
 
             _dbContext.RoleDefinitions.Remove(role);

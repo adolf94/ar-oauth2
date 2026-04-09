@@ -48,7 +48,7 @@ namespace backend.Services
 
         public async Task<bool> DeleteTrustAsync(Guid id)
         {
-            var trust = await _dbContext.CrossAppTrusts.FindAsync(id);
+            var trust = await _dbContext.CrossAppTrusts.FirstOrDefaultAsync(t => t.Id == id);
             if (trust == null) return false;
 
             _dbContext.CrossAppTrusts.Remove(trust);

@@ -48,7 +48,7 @@ namespace backend.Services
 
         public async Task<bool> DeleteScopeAsync(Guid scopeId)
         {
-            var scope = await _dbContext.ApplicationScopes.FindAsync(scopeId);
+            var scope = await _dbContext.ApplicationScopes.FirstOrDefaultAsync(s => s.Id == scopeId);
             if (scope == null) return false;
 
             _dbContext.ApplicationScopes.Remove(scope);

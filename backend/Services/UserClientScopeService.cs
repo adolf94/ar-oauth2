@@ -46,7 +46,7 @@ namespace backend.Services
 
         public async Task<bool> RemoveScopeAsync(Guid id)
         {
-            var mapping = await _dbContext.UserClientScopes.FindAsync(id);
+            var mapping = await _dbContext.UserClientScopes.FirstOrDefaultAsync(s => s.Id == id);
             if (mapping == null) return false;
 
             _dbContext.UserClientScopes.Remove(mapping);
