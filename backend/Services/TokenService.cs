@@ -106,10 +106,16 @@ namespace backend.Services
             {
                 new Claim(JwtRegisteredClaimNames.Sub,   user.Id),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
+                new Claim(JwtRegisteredClaimNames.Name,  user.Name),
                 new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
                 new Claim("client_id", client.ClientId),
                 new Claim("scope",     finalScopesString)
             };
+
+            if (!string.IsNullOrEmpty(user.Picture))
+            {
+                claims.Add(new Claim("picture", user.Picture));
+            }
 
             // Linking ID Token for single logout via session ID
             if (!string.IsNullOrEmpty(sid))
