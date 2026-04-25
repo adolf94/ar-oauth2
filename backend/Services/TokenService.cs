@@ -49,6 +49,7 @@ namespace backend.Services
             // 1. Resolve and Validate Cross-App Scopes
             var qualifiedScopes = finalScopesList.Where(s => s.StartsWith("api://")).ToList();
             var validatedCrossScopes = new List<string>();
+            var trustedAudiences = new List<string>();
 
             if (qualifiedScopes.Any())
             {
@@ -62,6 +63,9 @@ namespace backend.Services
                     var trust = trusts.FirstOrDefault(t => t.Matches(qs));
                     if (trust != null)
                     {
+                        if (!trustedAudiences.Contains(trust.TargetClientId))
+                            trustedAudiences.Add(trust.TargetClientId);
+
                         // Now check if USER has this scope assigned for the TargetClient (or if it is AdminApproved for TargetClient)
                         var isUserAuthorized = await _dbContext.UserClientScopes
                             .Where(ucs => ucs.UserId == user.Id && ucs.ClientId == trust.TargetClientId && ucs.Scope == trust.ScopeName)
@@ -160,11 +164,10 @@ namespace backend.Services
 
             // 5. Build Audiences list (Requesting Client + Target Clients for cross-app scopes)
             var audiences = new List<string> { client.ClientId };
-            foreach (var vs in validatedCrossScopes)
+            foreach (var aud in trustedAudiences)
             {
-                var targetId = vs.Substring(6).Split('/')[0];
-                if (!audiences.Contains(targetId))
-                    audiences.Add(targetId);
+                if (!audiences.Contains(aud))
+                    audiences.Add(aud);
             }
 
             foreach (var aud in audiences)
