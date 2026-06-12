@@ -12,9 +12,12 @@ export interface AuthConfig {
 }
 
 let _userManager: UserManager | null = null;
+let _isPrototype = false;
 
 export const initUserManager = (config: AuthConfig): UserManager => {
   if (_userManager) return _userManager;
+
+  _isPrototype = config.isPrototype ?? false;
 
   const settings: UserManagerSettings = {
     authority: config.authority || 'https://auth.adolfrey.com/',
@@ -25,7 +28,7 @@ export const initUserManager = (config: AuthConfig): UserManager => {
     scope: config.scope,
     userStore: new WebStorageStateStore({ store: window.localStorage }),
     monitorSession: false,
-    automaticSilentRenew: config.automaticSilentRenew ?? true,
+    automaticSilentRenew: config.isPrototype ? false : (config.automaticSilentRenew ?? true),
     extraQueryParams: {
       ...(config.theme ? { theme: config.theme } : {}),
       ...(config.isPrototype ? { prototype: 'true' } : {}),
@@ -44,6 +47,11 @@ export const getUserManager = (): UserManager => {
 };
 
 export const refreshAccessToken = async (scope?: string): Promise<OidcUser | null> => {
+  // Never call the /token endpoint in prototype mode
+  if (_isPrototype) {
+    return null;
+  }
+
   const userManager = getUserManager();
   const user = await userManager.getUser();
 

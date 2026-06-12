@@ -131,10 +131,12 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
         let oidcUser = await userManager.getUser();
 
         if (!oidcUser || oidcUser.expired) {
-          try {
-            oidcUser = await refreshAccessToken();
-          } catch (err) {
-            console.warn('Manual refresh on load failed:', err);
+          if (!config.isPrototype) {
+            try {
+              oidcUser = await refreshAccessToken();
+            } catch (err) {
+              console.warn('Manual refresh on load failed:', err);
+            }
           }
         }
 
@@ -310,6 +312,11 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
       } catch (e) {
         sessionStorage.removeItem(storageKey);
       }
+    }
+
+    // In prototype mode, skip all real token calls
+    if (config.isPrototype) {
+      return accessToken; // already set to 'dummy_access_token' on bypass login
     }
 
     let oidcUser = await userManager.getUser();
