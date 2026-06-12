@@ -275,3 +275,29 @@ When granted, these scopes appear in the `scope` claim of the access token and a
   "role": ["api://inventory-service/read:stock"]
 }
 ```
+
+---
+
+## 🧪 Prototype UI Bypass
+
+Atlas Rig provides a dedicated **Prototype UI Bypass** mode designed for UI-only prototypes. This mode allows you to simulate a complete authentication flow (with realistic-looking login screens) without needing to register a backend application, configure a database, or validate OIDC tokens.
+
+### Implementing the Bypass
+
+The easiest way to use the prototype bypass is via the **Atlas Rig Auth Client** library.
+
+Simply add the `isPrototype: true` flag to your `AuthConfig`:
+
+```tsx
+import { AuthProvider } from 'ar-auth-client';
+
+const config = {
+  authority: 'https://auth.adolfrey.com',
+  clientId: 'arbitrary-prototype-id', // No registration needed!
+  redirectUri: window.location.origin + '/callback',
+  scope: 'openid profile email',
+  isPrototype: true // Automatically handles the prototype bypass
+};
+```
+
+If you are not using the client library, you can manually append `&prototype=true` to the `/api/authorize` endpoint URL and handle the return `?code=prototype_bypass_code` yourself.
