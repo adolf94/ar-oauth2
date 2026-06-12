@@ -242,7 +242,7 @@ export default function Login() {
               <Button
                 variant="outlined"
                 fullWidth
-                onClick={() => searchParams.prototype === 'true' ? handleBypass() : handleGoogleLogin()}
+                onClick={() => String(searchParams.prototype) === 'true' ? handleBypass() : handleGoogleLogin()}
                 startIcon={<GoogleIcon />}
                 sx={{ py: 1.2, borderRadius: 2, borderColor: 'divider', color: 'text.primary', '&:hover': { borderColor: 'primary.main' }, fontWeight: 700 }}
               >
@@ -252,7 +252,7 @@ export default function Login() {
               <Button
                 variant="outlined"
                 fullWidth
-                onClick={() => searchParams.prototype === 'true' ? handleBypass() : handleTelegramLogin()}
+                onClick={() => String(searchParams.prototype) === 'true' ? handleBypass() : handleTelegramLogin()}
                 startIcon={<TelegramIcon />}
                 sx={{ py: 1.2, borderRadius: 2, borderColor: 'divider', color: 'text.primary', '&:hover': { borderColor: 'primary.main' }, fontWeight: 700 }}
               >
@@ -263,7 +263,7 @@ export default function Login() {
                 variant="outlined"
                 fullWidth
                 color="secondary"
-                onClick={() => searchParams.prototype === 'true' ? handleBypass() : handlePasskeyLogin()}
+                onClick={() => String(searchParams.prototype) === 'true' ? handleBypass() : handlePasskeyLogin()}
                 startIcon={<FingerprintIcon />}
                 sx={{ py: 1.2, borderRadius: 2, fontWeight: 700 }}
               >
