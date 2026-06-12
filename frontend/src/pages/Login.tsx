@@ -187,6 +187,49 @@ export default function Login() {
           overflow: 'visible'
         }}>
           <CardContent sx={{ p: 4 }}>
+            {String(searchParams.prototype) === 'true' && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  mb: 2,
+                }}
+              >
+                <Box
+                  sx={{
+                    px: 1.5,
+                    py: 0.5,
+                    borderRadius: 5,
+                    bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(235, 94, 40, 0.15)' : 'rgba(235, 94, 40, 0.08)',
+                    border: '1px solid',
+                    borderColor: (theme) => theme.palette.mode === 'dark' ? 'rgba(235, 94, 40, 0.3)' : 'rgba(235, 94, 40, 0.2)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      bgcolor: '#eb5e28',
+                      boxShadow: '0 0 6px #eb5e28',
+                      animation: 'pulse 1.5s infinite ease-in-out',
+                      '@keyframes pulse': {
+                        '0%': { opacity: 0.4 },
+                        '50%': { opacity: 1 },
+                        '100%': { opacity: 0.4 },
+                      }
+                    }}
+                  />
+                  <Typography variant="caption" fontWeight={700} sx={{ color: '#eb5e28', textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: 1 }}>
+                    Demo Mode
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+
             {activeSession && (
               <Box sx={{ mb: 4 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, opacity: 0.7 }}>
