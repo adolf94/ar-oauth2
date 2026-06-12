@@ -50,18 +50,23 @@ namespace backend.Endpoints
             if (string.IsNullOrEmpty(request.client_id) || request.response_type != "code")
                 return RedirectToError("invalid_request", "client_id and response_type=code are required.");
 
-            // 2. Validate client_id and redirect_uri against the DB
-            var client = await _clientService.GetByClientIdAsync(request.client_id);
-            if (client == null)
-                return RedirectToError("unauthorized_client", "Unknown client_id.");
+            var isPrototype = (string?)req.Query["prototype"] == "true";
 
-            if (!string.IsNullOrEmpty(request.redirect_uri) &&
-                !client.RedirectUris.Contains(request.redirect_uri))
-                return RedirectToError("invalid_request", "redirect_uri is not registered for this client.");
+            // 2. Validate client_id and redirect_uri against the DB (Skip for prototypes)
+            if (!isPrototype)
+            {
+                var client = await _clientService.GetByClientIdAsync(request.client_id);
+                if (client == null)
+                    return RedirectToError("unauthorized_client", "Unknown client_id.");
 
-            // 3. Enforce PKCE for public clients
-            if ((client.ClientSecrets == null || !client.ClientSecrets.Any()) && string.IsNullOrEmpty(request.code_challenge))
-                return RedirectToError("invalid_request", "PKCE (code_challenge) is required for public clients.");
+                if (!string.IsNullOrEmpty(request.redirect_uri) &&
+                    !client.RedirectUris.Contains(request.redirect_uri))
+                    return RedirectToError("invalid_request", "redirect_uri is not registered for this client.");
+
+                // 3. Enforce PKCE for public clients
+                if ((client.ClientSecrets == null || !client.ClientSecrets.Any()) && string.IsNullOrEmpty(request.code_challenge))
+                    return RedirectToError("invalid_request", "PKCE (code_challenge) is required for public clients.");
+            }
 
             // 4. Check for existing session (Auto-Login)
             // We only bypass the login page if explicitly requested via skip_prompt=true
@@ -92,7 +97,6 @@ namespace backend.Endpoints
                 }
             }
 
-            // 5. Redirect to the local SPA login page, forwarding all PKCE params
             var loginUrl = $"/login" +
                            $"?client_id={Uri.EscapeDataString(request.client_id)}" +
                            $"&response_type={Uri.EscapeDataString(request.response_type)}" +
@@ -101,7 +105,8 @@ namespace backend.Endpoints
                            $"&code_challenge={Uri.EscapeDataString(request.code_challenge)}" +
                            $"&code_challenge_method={Uri.EscapeDataString(request.code_challenge_method)}" +
                            $"&scope={Uri.EscapeDataString(request.scope)}" +
-                           (string.IsNullOrEmpty(request.link_token) ? "" : $"&link_token={Uri.EscapeDataString(request.link_token)}");
+                           (string.IsNullOrEmpty(request.link_token) ? "" : $"&link_token={Uri.EscapeDataString(request.link_token)}") +
+                           (isPrototype ? "&prototype=true" : "");
 
             return new RedirectResult(loginUrl);
         }

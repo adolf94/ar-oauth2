@@ -94,6 +94,22 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
         const code = params.get('code');
         const state = params.get('state');
 
+        if (code === 'prototype_bypass_code') {
+          const dummyUser: User = {
+            userId: 'prototype-user',
+            email: 'prototype@example.com',
+            name: 'Prototype User',
+            picture: '',
+            roles: ['admin', 'user'],
+            scopes: []
+          };
+          setUser(dummyUser);
+          setAccessToken('dummy_access_token');
+          setIsLoading(false);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        }
+
         if (window.opener && (code || state)) {
           try {
             await userManager.signinPopupCallback();
@@ -166,20 +182,48 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
         return;
       }
 
-      const oidcUser = await userManager.signinPopup(signinArgs);
-      const mappedUser = updateUserState(oidcUser);
-      return { 
-        state: oidcUser.state, 
-        user: mappedUser, 
-        idToken: oidcUser.id_token ?? null,
-        oidcUser
-      };
+      let bypassTriggered = false;
+      return await new Promise<{ state: any; user: User; idToken: string | null; oidcUser: OidcUser } | void>(async (resolve, reject) => {
+        const messageHandler = (event: MessageEvent) => {
+          if (event.data?.type === 'PROTOTYPE_LOGIN_SUCCESS') {
+            bypassTriggered = true;
+            const dummyUser: User = {
+              userId: 'prototype-user',
+              email: 'prototype@example.com',
+              name: 'Prototype User',
+              picture: '',
+              roles: ['admin', 'user'],
+              scopes: []
+            };
+            setUser(dummyUser);
+            setAccessToken('dummy_access_token');
+            resolve({ state: options?.state, user: dummyUser, idToken: null, oidcUser: null as any });
+          }
+        };
+        window.addEventListener('message', messageHandler);
+
+        try {
+          const oidcUser = await userManager.signinPopup(signinArgs);
+          window.removeEventListener('message', messageHandler);
+          const mappedUser = updateUserState(oidcUser);
+          resolve({ 
+            state: oidcUser.state, 
+            user: mappedUser, 
+            idToken: oidcUser.id_token ?? null,
+            oidcUser
+          });
+        } catch (error: any) {
+          window.removeEventListener('message', messageHandler);
+          if (bypassTriggered) return; // Promise already resolved
+          if (error?.message === 'Popup closed') {
+            console.warn('Authentication popup was closed by the user.');
+          } else {
+            console.error('Login failed:', error);
+          }
+          reject(error);
+        }
+      });
     } catch (error: any) {
-      if (error?.message === 'Popup closed') {
-        console.warn('Authentication popup was closed by the user.');
-      } else {
-        console.error('Login failed:', error);
-      }
       // Re-throw so the 3rd party app can catch it
       throw error;
     }

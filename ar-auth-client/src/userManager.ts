@@ -8,6 +8,7 @@ export interface AuthConfig {
   popupRedirectUri?: string;
   automaticSilentRenew?: boolean;
   theme?: 'light' | 'dark';
+  isPrototype?: boolean;
 }
 
 let _userManager: UserManager | null = null;
@@ -27,6 +28,7 @@ export const initUserManager = (config: AuthConfig): UserManager => {
     automaticSilentRenew: config.automaticSilentRenew ?? true,
     extraQueryParams: {
       ...(config.theme ? { theme: config.theme } : {}),
+      ...(config.isPrototype ? { prototype: 'true' } : {}),
     },
   };
 

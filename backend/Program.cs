@@ -23,7 +23,7 @@ var host = new HostBuilder()
         // If GoogleClientId is at the root of Values, bind it manually if not already bound
         if (string.IsNullOrEmpty(appConfig.Google.ClientId))
         {
-            appConfig.Google.ClientId = builder.Configuration["GoogleClientId"] ?? "dev-google-client-id";
+            appConfig.Google.ClientId = builder.Configuration["GoogleClientId"]!;
         }
 
         if (string.IsNullOrEmpty(appConfig.Cosmos.Endpoint))

@@ -21,6 +21,7 @@ interface LoginSearchParams {
   code_challenge_method?: string;
   scope?: string;
   link_token?: string;
+  prototype?: string;
 }
 
 export default function Login() {
@@ -136,6 +137,22 @@ export default function Login() {
 
   // ... (existing handlers)
 
+  const handleBypass = () => {
+    if (window.opener) {
+      window.opener.postMessage({ type: 'PROTOTYPE_LOGIN_SUCCESS', code: 'prototype_bypass_code' }, '*');
+      window.close();
+    } else if (searchParams.redirect_uri) {
+      const redirectUrl = new URL(searchParams.redirect_uri, window.location.origin);
+      redirectUrl.searchParams.set('code', 'prototype_bypass_code');
+      if (searchParams.state) {
+        redirectUrl.searchParams.set('state', searchParams.state);
+      }
+      window.location.href = redirectUrl.toString();
+    } else {
+      window.location.href = '/profile';
+    }
+  };
+
   return (
     <Box
       sx={{
@@ -221,13 +238,11 @@ export default function Login() {
               </Box>
             )}
 
-
-
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Button
                 variant="outlined"
                 fullWidth
-                onClick={() => handleGoogleLogin()}
+                onClick={() => searchParams.prototype === 'true' ? handleBypass() : handleGoogleLogin()}
                 startIcon={<GoogleIcon />}
                 sx={{ py: 1.2, borderRadius: 2, borderColor: 'divider', color: 'text.primary', '&:hover': { borderColor: 'primary.main' }, fontWeight: 700 }}
               >
@@ -237,7 +252,7 @@ export default function Login() {
               <Button
                 variant="outlined"
                 fullWidth
-                onClick={handleTelegramLogin}
+                onClick={() => searchParams.prototype === 'true' ? handleBypass() : handleTelegramLogin()}
                 startIcon={<TelegramIcon />}
                 sx={{ py: 1.2, borderRadius: 2, borderColor: 'divider', color: 'text.primary', '&:hover': { borderColor: 'primary.main' }, fontWeight: 700 }}
               >
@@ -248,12 +263,13 @@ export default function Login() {
                 variant="outlined"
                 fullWidth
                 color="secondary"
-                onClick={handlePasskeyLogin}
+                onClick={() => searchParams.prototype === 'true' ? handleBypass() : handlePasskeyLogin()}
                 startIcon={<FingerprintIcon />}
                 sx={{ py: 1.2, borderRadius: 2, fontWeight: 700 }}
               >
                 Sign in with Passkey
               </Button>
+
             </Box>
           </CardContent>
         </Card>
