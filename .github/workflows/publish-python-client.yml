@@ -1,0 +1,40 @@
+name: Publish Python Auth Client
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version override (leave empty to use pyproject.toml)'
+        required: false
+        default: ''
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Update version (if override provided)
+        if: ${{ inputs.version != '' }}
+        run: |
+          cd ar-auth-client-python
+          sed -i "s/^version = .*/version = \"${{ inputs.version }}\"/" pyproject.toml
+
+      - name: Build package
+        run: |
+          cd ar-auth-client-python
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ar-auth-client-python/dist/

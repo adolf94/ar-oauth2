@@ -1,0 +1,51 @@
+name: Publish .NET Auth Client
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version override (leave empty to use Directory.Build.props)'
+        required: false
+        default: ''
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Determine Version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "value=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(grep -oP '<Version>\K[^<]+' ar-auth-client-dotnet/Directory.Build.props)
+            echo "value=$VERSION" >> $GITHUB_OUTPUT
+          fi
+          echo "Publishing version: $(cat $GITHUB_OUTPUT | grep value | cut -d= -f2)"
+
+      - name: Restore Dependencies
+        run: dotnet restore
+        working-directory: ar-auth-client-dotnet
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+        working-directory: ar-auth-client-dotnet
+
+      - name: Pack
+        run: dotnet pack --configuration Release --no-build --output ./nupkgs /p:Version=${{ steps.version.outputs.value }}
+        working-directory: ar-auth-client-dotnet
+
+      - name: Publish to GitHub Packages
+        run: |
+          dotnet nuget add source https://nuget.pkg.github.com/adolf94/index.json --name github --username adolf94 --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text
+          dotnet nuget push "./nupkgs/*.nupkg" --source github --skip-duplicate
+        working-directory: ar-auth-client-dotnet

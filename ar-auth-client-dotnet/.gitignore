@@ -1,0 +1,13 @@
+## .NET
+bin/
+obj/
+nupkgs/
+
+## IDE
+.vs/
+*.user
+*.suo
+
+## NuGet
+*.nupkg
+*.snupkg

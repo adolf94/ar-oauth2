@@ -301,3 +301,152 @@ const config = {
 ```
 
 If you are not using the client library, you can manually append `&prototype=true` to the `/api/authorize` endpoint URL and handle the return `?code=prototype_bypass_code` yourself.
+
+---
+
+## 🔐 Backend Token Verification
+
+After your frontend obtains an access token, your backend API must verify it before trusting the request. Atlas Rig provides official SDKs for **.NET**, **Python**, and **JavaScript/TypeScript**.
+
+> **Important:** Token verification does NOT require `client_id` or `client_secret`. The SDK only needs the Authority URL to fetch the public signing keys (JWKS) and validate the RS256 signature.
+
+### .NET (Ar.Auth.OpenId)
+
+Install from GitHub Packages:
+```bash
+dotnet add package Ar.Auth.OpenId
+dotnet add package Ar.Auth.OpenId.AspNetCore      # For ASP.NET Core
+dotnet add package Ar.Auth.OpenId.AzureFunctions   # For Azure Functions
+```
+
+#### ASP.NET Core Web API
+```csharp
+using Ar.Auth.OpenId.AspNetCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// One-liner: adds JWT Bearer auth pointing at Atlas Rig OIDC discovery
+builder.Services.AddArAuth();
+builder.Services.AddAuthorization();
+
+var app = builder.Build();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapGet("/api/profile", (ClaimsPrincipal user) =>
+{
+    return Results.Ok(new { sub = user.FindFirst("sub")?.Value });
+}).RequireAuthorization();
+
+app.Run();
+```
+
+#### Azure Functions (Isolated Worker)
+```csharp
+using Ar.Auth.OpenId.AzureFunctions;
+
+var host = new HostBuilder()
+    .ConfigureFunctionsWorkerDefaults(worker =>
+    {
+        worker.UseArAuth(
+            configure: options => { options.Authority = "https://auth.adolfrey.com/api"; },
+            configureMiddleware: mw => { mw.RequiredRoles = new[] { "admin" }; }
+        );
+    })
+    .Build();
+host.Run();
+```
+
+Then access the user in your function via `context.Items["ArAuthUser"]`.
+
+#### Standalone Verification
+```csharp
+using Ar.Auth.OpenId;
+
+var client = new ArAuthClient(); // defaults to https://auth.adolfrey.com/api
+var principal = await client.VerifyTokenAsync("eyJhbGciOiJSUzI1Ni...");
+Console.WriteLine($"User: {principal.FindFirst("sub")?.Value}");
+```
+
+---
+
+### Python (ar-auth-client)
+
+Install from PyPI:
+```bash
+pip install ar-auth-client
+pip install ar-auth-client[fastapi]   # For FastAPI
+pip install ar-auth-client[flask]     # For Flask
+pip install ar-auth-client[azure]     # For Azure Functions
+```
+
+#### FastAPI
+```python
+from fastapi import FastAPI, Depends
+from ar_auth.fastapi import ArAuthBearer
+
+app = FastAPI()
+admin_auth = ArAuthBearer(required_roles=["admin"])
+
+@app.get("/admin/dashboard")
+def get_dashboard(user_payload: dict = Depends(admin_auth)):
+    return {"user_id": user_payload["sub"], "roles": user_payload["roles"]}
+```
+
+#### Flask
+```python
+from flask import Flask, jsonify, g
+from ar_auth.flask import requires_auth
+
+app = Flask(__name__)
+
+@app.route("/api/profile")
+@requires_auth(required_scopes=["profile"])
+def get_profile():
+    user = g.ar_auth_user
+    return jsonify({"sub": user["sub"], "email": user.get("email")})
+```
+
+#### Standalone Verification
+```python
+from ar_auth import ArAuthClient
+
+client = ArAuthClient()  # defaults to https://auth.adolfrey.com/api
+claims = client.verify_token("eyJhbGciOiJSUzI1Ni...")
+print("User:", claims["sub"])
+```
+
+---
+
+### JavaScript / TypeScript (ar-auth-client)
+
+The frontend `ar-auth-client` library handles the full authentication flow. See [Method 3](#-method-3-using-atlas-rig-auth-client-highly-recommended) above for the frontend setup.
+
+For backend (Node.js) token verification, use standard OIDC/JWT libraries such as `jose`:
+
+```typescript
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+const JWKS = createRemoteJWKSet(
+  new URL('https://auth.adolfrey.com/.well-known/jwks.json')
+);
+
+async function verifyToken(token: string) {
+  const { payload } = await jwtVerify(token, JWKS, {
+    issuer: 'https://auth.adolfrey.com/api',
+  });
+  return payload;
+}
+```
+
+---
+
+## 📋 End-to-End Integration Summary
+
+| Step | Frontend | Backend |
+|---|---|---|
+| **1. Login** | Use `ar-auth-client` (React) or `oidc-client-ts` to initiate the Authorization Code + PKCE flow | — |
+| **2. Get Token** | Library exchanges the auth code for an `access_token` automatically | — |
+| **3. API Call** | Send `Authorization: Bearer <access_token>` header with each request | — |
+| **4. Verify Token** | — | Use `Ar.Auth.OpenId` (.NET), `ar-auth-client` (Python), or `jose` (Node.js) to validate the token's signature, issuer, and expiration |
+| **5. Authorize** | — | Check `roles` and `scope` claims in the verified token to enforce access control |
