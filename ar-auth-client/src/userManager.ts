@@ -46,67 +46,93 @@ export const getUserManager = (): UserManager => {
   return _userManager;
 };
 
+let _activeRefreshPromises: Record<string, Promise<OidcUser | null>> = {};
+let _refreshLock = Promise.resolve();
+
 export const refreshAccessToken = async (scope?: string): Promise<OidcUser | null> => {
   // Never call the /token endpoint in prototype mode
   if (_isPrototype) {
     return null;
   }
 
-  const userManager = getUserManager();
-  const user = await userManager.getUser();
+  const scopeKey = scope || 'default';
 
-  if (!user || !user.refresh_token) {
-    return null;
+  // If a refresh is already in progress for this EXACT scope, wait for it
+  if (_activeRefreshPromises[scopeKey]) {
+    return _activeRefreshPromises[scopeKey];
   }
 
-  try {
-    const metadata = await userManager.metadataService.getMetadata();
-    const tokenEndpoint = metadata.token_endpoint;
+  const executeRefresh = async (): Promise<OidcUser | null> => {
+    const userManager = getUserManager();
+    const user = await userManager.getUser();
 
-    if (!tokenEndpoint) {
-      throw new Error('Token endpoint not found in metadata');
+    if (!user || !user.refresh_token) {
+      return null;
     }
 
-    const params = new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: user.refresh_token,
-      client_id: userManager.settings.client_id,
-      ...(scope ? { scope } : {}),
-    });
+    try {
+      const metadata = await userManager.metadataService.getMetadata();
+      const tokenEndpoint = metadata.token_endpoint;
 
-    const response = await fetch(tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params,
-    });
+      if (!tokenEndpoint) {
+        throw new Error('Token endpoint not found in metadata');
+      }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Refresh token request failed: ${errorData.error_description || errorData.error || response.statusText}`);
+      const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: user.refresh_token,
+        client_id: userManager.settings.client_id,
+        ...(scope ? { scope } : {}),
+      });
+
+      const response = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Refresh token request failed: ${errorData.error_description || errorData.error || response.statusText}`);
+      }
+
+      const tokenResponse = await response.json();
+
+      // Create a new User object with updated tokens but keep existing profile data if not returned
+      const newUser = new OidcUser({
+        id_token: tokenResponse.id_token || user.id_token,
+        access_token: tokenResponse.access_token,
+        refresh_token: tokenResponse.refresh_token || user.refresh_token,
+        token_type: tokenResponse.token_type || user.token_type,
+        scope: tokenResponse.scope || user.scope,
+        profile: user.profile,
+        expires_at: Math.floor(Date.now() / 1000) + (tokenResponse.expires_in || 3600),
+        session_state: tokenResponse.session_state || user.session_state,
+      });
+
+      await userManager.storeUser(newUser);
+      return newUser;
+    } catch (error) {
+      console.error('Manual refresh failed:', error);
+      return null;
     }
+  };
 
-    const tokenResponse = await response.json();
+  const promise = (async () => {
+    // Wait for any previous refresh to finish (success or fail) to prevent concurrent uses of the same refresh_token
+    await _refreshLock.catch(() => {});
+    
+    try {
+      return await executeRefresh();
+    } finally {
+      delete _activeRefreshPromises[scopeKey];
+    }
+  })();
 
-    // Create a new User object with updated tokens but keep existing profile data if not returned
-    const newUser = new OidcUser({
-      id_token: tokenResponse.id_token || user.id_token,
-      access_token: tokenResponse.access_token,
-      refresh_token: tokenResponse.refresh_token || user.refresh_token,
-      token_type: tokenResponse.token_type || user.token_type,
-      scope: tokenResponse.scope || user.scope,
-      profile: user.profile,
-      expires_at: Math.floor(Date.now() / 1000) + (tokenResponse.expires_in || 3600),
-      session_state: tokenResponse.session_state || user.session_state,
-    });
+  _activeRefreshPromises[scopeKey] = promise;
+  _refreshLock = promise.then(() => {}).catch(() => {});
 
-    await userManager.storeUser(newUser);
-    return newUser;
-  } catch (error) {
-    console.error('Manual refresh failed:', error);
-    // If refresh fails, we might want to clear the user to force a fresh login
-    // but we'll leave that to the caller or until we're sure it's unrecoverable.
-    return null;
-  }
+  return promise;
 };
