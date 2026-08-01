@@ -46,7 +46,7 @@ export const getUserManager = (): UserManager => {
   return _userManager;
 };
 
-let _activeRefreshPromises: Record<string, Promise<OidcUser | null>> = {};
+let _activeRefreshPromises: Record<string, Promise<OidcUser | null> | undefined> = {};
 let _refreshLock = Promise.resolve();
 
 export const refreshAccessToken = async (scope?: string): Promise<OidcUser | null> => {
