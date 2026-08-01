@@ -201,6 +201,9 @@ namespace backend.Endpoints
                 var (newAccessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, scopesToUse, sid: sid);
                 var newRefreshToken = await _tokenService.RotateRefreshTokenAsync(storedToken, sid: sid);
 
+                if (string.IsNullOrEmpty(newRefreshToken))
+                    return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "Refresh token was already used or revoked." });
+
 
                 string? idToken = null;
                 if (grantedScopes != null && grantedScopes.Contains("openid"))

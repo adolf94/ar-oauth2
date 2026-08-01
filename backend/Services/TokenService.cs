@@ -347,11 +347,18 @@ namespace backend.Services
 
         public async Task<string> RotateRefreshTokenAsync(Token oldToken, string? sid = null)
         {
-            // Remove the old token (one-time use)
-            _dbContext.Tokens.Remove(oldToken);
+            try
+            {
+                // Remove the old token (one-time use)
+                _dbContext.Tokens.Remove(oldToken);
 
-            // Generate a fresh one, preserving scopes and relational ID
-            return await GenerateRefreshTokenAsync(oldToken.UserId, oldToken.ClientId, oldToken.Scopes, sid ?? oldToken.Sid);
+                // Generate a fresh one, preserving scopes and relational ID
+                return await GenerateRefreshTokenAsync(oldToken.UserId, oldToken.ClientId, oldToken.Scopes, sid ?? oldToken.Sid);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Azure.Cosmos.CosmosException { StatusCode: System.Net.HttpStatusCode.NotFound })
+            {
+                return string.Empty; // Handled by caller to return Unauthorized
+            }
         }
 
         // ── ID Token ────────────────────────────────────────────────
