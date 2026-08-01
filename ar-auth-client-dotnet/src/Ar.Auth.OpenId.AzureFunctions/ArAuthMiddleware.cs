@@ -17,6 +17,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
     private readonly string? _audience;
     private readonly string[] _requiredRoles;
     private readonly string[] _requiredScopes;
+    private readonly HashSet<string> _excludedFunctions;
 
     /// <summary>
     /// Initializes a new instance of ArAuthMiddleware.
@@ -29,11 +30,19 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
         _audience = middlewareOptions?.Audience;
         _requiredRoles = middlewareOptions?.RequiredRoles ?? Array.Empty<string>();
         _requiredScopes = middlewareOptions?.RequiredScopes ?? Array.Empty<string>();
+        _excludedFunctions = new HashSet<string>(middlewareOptions?.ExcludedFunctions ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />
     public async Task Invoke(FunctionContext context, FunctionExecutionDelegate next)
     {
+        // Check if the function is excluded from authentication
+        if (_excludedFunctions.Contains(context.FunctionDefinition.Name))
+        {
+            await next(context);
+            return;
+        }
+
         // Only process HTTP triggers
         var httpRequestData = await context.GetHttpRequestDataAsync();
         if (httpRequestData == null)
@@ -47,7 +56,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
         {
             var response = httpRequestData.CreateResponse();
             response.StatusCode = HttpStatusCode.Unauthorized;
-            response.Body.Write(System.Text.Encoding.UTF8.GetBytes("Missing Authorization header."));
+            await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes("Missing Authorization header."));
             context.GetInvocationResult().Value = response;
             return;
         }
@@ -57,7 +66,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
         {
             var response = httpRequestData.CreateResponse();
             response.StatusCode = HttpStatusCode.Unauthorized;
-            response.Body.Write(System.Text.Encoding.UTF8.GetBytes("Invalid Authorization header format. Expected: Bearer <token>."));
+            await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes("Invalid Authorization header format. Expected: Bearer <token>."));
             context.GetInvocationResult().Value = response;
             return;
         }
@@ -81,7 +90,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
                     {
                         var response = httpRequestData.CreateResponse();
                         response.StatusCode = HttpStatusCode.Forbidden;
-                        response.Body.Write(System.Text.Encoding.UTF8.GetBytes($"Missing required role: {role}"));
+                        await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Missing required role: {role}"));
                         context.GetInvocationResult().Value = response;
                         return;
                     }
@@ -101,7 +110,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
                     {
                         var response = httpRequestData.CreateResponse();
                         response.StatusCode = HttpStatusCode.Forbidden;
-                        response.Body.Write(System.Text.Encoding.UTF8.GetBytes($"Missing required scope: {scope}"));
+                        await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Missing required scope: {scope}"));
                         context.GetInvocationResult().Value = response;
                         return;
                     }
@@ -115,7 +124,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
         {
             var response = httpRequestData.CreateResponse();
             response.StatusCode = HttpStatusCode.Unauthorized;
-            response.Body.Write(System.Text.Encoding.UTF8.GetBytes($"Token validation failed: {ex.Message}"));
+            await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Token validation failed: {ex.Message}"));
             context.GetInvocationResult().Value = response;
             return;
         }
@@ -137,4 +146,7 @@ public class ArAuthMiddlewareOptions
 
     /// <summary>Scopes required to access the function. Optional.</summary>
     public string[]? RequiredScopes { get; set; }
+
+    /// <summary>A list of function names that should bypass authentication. Optional.</summary>
+    public string[]? ExcludedFunctions { get; set; }
 }
