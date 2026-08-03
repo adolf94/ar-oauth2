@@ -6,13 +6,12 @@ import datetime
 # Disable insecure request warnings for local emulator
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-ENDPOINT = os.environ.get("COSMOS_ENDPOINT", "https://localhost:8081/")
-KEY = os.environ.get("COSMOS_KEY", "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==")
+CONNECTION_STRING = os.environ.get("COSMOS_CONNECTION_STRING", "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;")
 DATABASE_NAME = os.environ.get("COSMOS_DATABASE_NAME", "ArAuth")
 
 def migrate():
-    print(f"Connecting to Cosmos DB at {ENDPOINT}...")
-    client = CosmosClient(ENDPOINT, KEY, connection_verify=False)
+    print("Connecting to Cosmos DB...")
+    client = CosmosClient.from_connection_string(conn_str=CONNECTION_STRING, connection_verify=False)
     database = client.get_database_client(DATABASE_NAME)
     
     # 1. Create PersonalAccessTokens container
