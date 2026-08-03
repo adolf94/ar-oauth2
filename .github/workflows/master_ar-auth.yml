@@ -85,6 +85,9 @@ jobs:
       contents: read
 
     steps:
+      - name: 'Checkout Code for Migrations'
+        uses: actions/checkout@v4
+
       - name: 'Download Build Artifact'
         uses: actions/download-artifact@v4
         with:
@@ -96,9 +99,6 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_95EA35FAE7CB4F2985657FDFDAB866E0 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_0F1EC04C0A004072B025788425900D7F }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_AF4187BD34BE4D3387FA06733C036584 }}
-
-      - name: 'Checkout Code for Migrations'
-        uses: actions/checkout@v4
 
       - name: 'Setup Python for Migrations'
         uses: actions/setup-python@v5
