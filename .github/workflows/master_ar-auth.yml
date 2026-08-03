@@ -110,7 +110,7 @@ jobs:
           COSMOS_CONNECTION_STRING: ${{ secrets.CONNECTION_STRING }}
           COSMOS_DATABASE_NAME: 'ArAuth'
         run: |
-          pip install -r scripts/migrations/requirements.txt
+          pip install -r scripts/requirements.txt
           python scripts/migrate.py
 
       - name: 'Run Azure Functions Action'

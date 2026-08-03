@@ -35,7 +35,7 @@ def main():
     try:
         import azure.cosmos
     except ImportError:
-        print("Error: azure-cosmos package is missing. Please run: pip install -r scripts/migrations/requirements.txt")
+        print("Error: azure-cosmos package is missing. Please run: pip install -r scripts/requirements.txt")
         sys.exit(1)
         
     applied_migrations = get_applied_migrations()

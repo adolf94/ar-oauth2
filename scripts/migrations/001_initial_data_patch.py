@@ -70,4 +70,4 @@ if __name__ == "__main__":
         migrate()
     except Exception as e:
         print(f"Error during migration: {e}")
-        print("Tip: Make sure you have installed the required package: pip install -r requirements.txt")
+        print("Tip: Make sure you have installed the required package: pip install -r scripts/requirements.txt")
