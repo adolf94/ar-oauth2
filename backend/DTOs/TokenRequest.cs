@@ -10,5 +10,6 @@ namespace backend.DTOs
         public string code_verifier { get; set; } = string.Empty;
         public string refresh_token { get; set; } = string.Empty;
         public string scope { get; set; } = string.Empty;
+        public string token { get; set; } = string.Empty;
     }
 }

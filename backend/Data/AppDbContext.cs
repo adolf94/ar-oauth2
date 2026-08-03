@@ -14,6 +14,7 @@ namespace backend.Data
         public DbSet<UserClientScope> UserClientScopes { get; set; } = null!;
         public DbSet<CrossAppTrust> CrossAppTrusts { get; set; } = null!;
         public DbSet<LogEntry> Logs { get; set; } = null!;
+        public DbSet<PersonalAccessToken> PersonalAccessTokens { get; set; } = null!;
 
         public AppDbContext(DbContextOptions<AppDbContext> options)
             : base(options)
@@ -31,6 +32,7 @@ namespace backend.Data
             modelBuilder.Entity<UserClientScope>().ToContainer("UserClientScopes").HasPartitionKey(u => u.UserId);
             modelBuilder.Entity<CrossAppTrust>().ToContainer("CrossAppTrusts").HasPartitionKey(t => t.RequestingClientId);
             modelBuilder.Entity<LogEntry>().ToContainer("Logs").HasPartitionKey(l => l.Id);
+            modelBuilder.Entity<PersonalAccessToken>().ToContainer("PersonalAccessTokens").HasPartitionKey(t => t.UserId);
         }
     }
 }

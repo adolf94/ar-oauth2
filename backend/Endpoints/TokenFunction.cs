@@ -7,6 +7,13 @@ using backend.DTOs;
 using backend.Services;
 using System.Text.Json;
 using System.IO;
+using System;
+using System.Linq;
+using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
+using backend.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace backend.Endpoints
 {
@@ -17,19 +24,22 @@ namespace backend.Endpoints
         private readonly ITokenService _tokenService;
         private readonly IUserService _userService;
         private readonly IClientService _clientService;
+        private readonly AppDbContext _dbContext;
 
         public TokenFunction(
             ILogger<TokenFunction> logger,
             IAuthCodeService authCodeService,
             ITokenService tokenService,
             IUserService userService,
-            IClientService clientService)
+            IClientService clientService,
+            AppDbContext dbContext)
         {
             _logger = logger;
             _authCodeService = authCodeService;
             _tokenService = tokenService;
             _userService = userService;
             _clientService = clientService;
+            _dbContext = dbContext;
         }
 
         [Function("Token")]
@@ -53,7 +63,8 @@ namespace backend.Endpoints
                     redirect_uri  = form["redirect_uri"].ToString()  ?? string.Empty,
                     code_verifier = form["code_verifier"].ToString() ?? string.Empty,
                     refresh_token = form["refresh_token"].ToString() ?? string.Empty,
-                    scope         = form["scope"].ToString()         ?? string.Empty
+                    scope         = form["scope"].ToString()         ?? string.Empty,
+                    token         = form["token"].ToString()         ?? string.Empty
                 };
             }
             else
@@ -247,6 +258,143 @@ namespace backend.Endpoints
                 {
                     AccessToken = accessToken,
                     ExpiresIn   = 3600, // 1 hour for machine tokens
+                    TokenType   = "Bearer",
+                    Scope       = grantedScopes
+                });
+            }
+
+            // ── personal_access_token grant ──────────────────────────────────────────
+            if (tokenReq.grant_type == "personal_access_token")
+            {
+                if (string.IsNullOrEmpty(tokenReq.token))
+                {
+                    return new BadRequestObjectResult(new { error = "invalid_request", error_description = "token parameter is required." });
+                }
+
+                var client = await _clientService.GetByClientIdAsync(tokenReq.client_id);
+                if (client == null)
+                {
+                    return new UnauthorizedObjectResult(new { error = "invalid_client" });
+                }
+
+                // If confidential client, validate client secret
+                if (client.ClientSecrets != null && client.ClientSecrets.Any())
+                {
+                    if (string.IsNullOrEmpty(tokenReq.client_secret) || !_clientService.VerifyClientSecret(tokenReq.client_secret, client.ClientSecrets))
+                    {
+                        return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed." });
+                    }
+                }
+
+                // Hash the incoming raw PAT
+                string tokenHash;
+                using (var sha256 = SHA256.Create())
+                {
+                    var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(tokenReq.token));
+                    tokenHash = Convert.ToHexString(hashedBytes).ToLower();
+                }
+
+                var pat = await _dbContext.PersonalAccessTokens
+                    .FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
+
+                if (pat == null)
+                {
+                    return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "Personal access token is invalid." });
+                }
+
+                if (pat.ExpiresAt.HasValue && pat.ExpiresAt.Value < DateTime.UtcNow)
+                {
+                    return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "Personal access token has expired." });
+                }
+
+                var user = await _userService.GetByIdAsync(pat.UserId);
+                if (user == null)
+                {
+                    return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "User not found." });
+                }
+
+                // Resolve requested scopes. They must be a subset of the PAT's configured scopes.
+                var patScopes = pat.Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+                var scopesToUse = pat.Scopes;
+                var requestedScopesList = patScopes;
+
+                if (!string.IsNullOrEmpty(tokenReq.scope))
+                {
+                    var requestedScopes = tokenReq.scope.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    var verifiedScopes = new List<string>();
+
+                    foreach (var s in requestedScopes)
+                    {
+                        if (patScopes.Contains(s))
+                        {
+                            verifiedScopes.Add(s);
+                        }
+                        else
+                        {
+                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not granted by this personal access token." });
+                        }
+                    }
+                    scopesToUse = string.Join(' ', verifiedScopes.Distinct());
+                    requestedScopesList = verifiedScopes.Distinct().ToList();
+                }
+
+                // Verify AllowPat and MaxAccessTokenLifetime for all requested scopes
+                int maxLifetime = 3600; // default for programmatic tokens
+                
+                foreach (var s in requestedScopesList)
+                {
+                    string scopeClientId = client.ClientId;
+                    string scopeName = s;
+
+                    if (s.StartsWith("api://"))
+                    {
+                        var parts = s.Substring(6).Split('/');
+                        if (parts.Length >= 2)
+                        {
+                            scopeClientId = parts[0];
+                            scopeName = string.Join('/', parts.Skip(1));
+                        }
+                    }
+
+                    var scopeDef = await _dbContext.ApplicationScopes
+                        .FirstOrDefaultAsync(sc => sc.ClientId == scopeClientId && sc.Name == scopeName);
+
+                    if (scopeDef != null)
+                    {
+                        if (scopeDef.AllowPat == false)
+                        {
+                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not allowed to be requested by Personal Access Tokens." });
+                        }
+
+                        if (scopeDef.MaxAccessTokenLifetime.HasValue)
+                        {
+                            if (scopeDef.MaxAccessTokenLifetime.Value < maxLifetime)
+                            {
+                                maxLifetime = scopeDef.MaxAccessTokenLifetime.Value;
+                            }
+                        }
+                    }
+                }
+
+                // Generate signed access JWT using TokenService
+                var sid = Guid.NewGuid().ToString();
+                var (accessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, scopesToUse, sid: sid);
+
+                // Update LastUsedAt timestamp
+                pat.LastUsedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+
+                string? idToken = null;
+                if (scopesToUse.Contains("openid"))
+                {
+                    idToken = _tokenService.GenerateIdToken(user, client, nonce: "", sid: sid);
+                }
+
+                return new OkObjectResult(new TokenResponse
+                {
+                    AccessToken = accessToken,
+                    IdToken     = idToken,
+                    ExpiresIn   = maxLifetime,
                     TokenType   = "Bearer",
                     Scope       = grantedScopes
                 });

@@ -25,7 +25,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --minify --sourcemap",
     "dev": "tsup src/index.ts --format cjs,esm --watch --dts --sourcemap",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "prepare": "husky"
   },
   "keywords": [
     "oidc",

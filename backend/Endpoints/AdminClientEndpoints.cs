@@ -181,7 +181,7 @@ namespace backend.Endpoints
 
             try
             {
-                var scope = await _scopeService.CreateScopeAsync(data.ClientId, data.Name, data.Description, data.IsAdminApproved == true, data.IsClientOnly == true);
+                var scope = await _scopeService.CreateScopeAsync(data.ClientId, data.Name, data.Description, data.IsAdminApproved == true, data.IsClientOnly == true, data.AllowPat, data.MaxAccessTokenLifetime);
                 return new OkObjectResult(scope);
             }
             catch (Exception ex)

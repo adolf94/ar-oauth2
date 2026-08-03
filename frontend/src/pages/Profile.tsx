@@ -1,11 +1,20 @@
-import { Box, Button, Card, CardContent, Chip, CircularProgress, Divider, List, ListItem, ListItemText, Typography, IconButton, Container, TextField, Avatar } from '@mui/material';
-import { Delete as DeleteIcon, Fingerprint as FingerprintIcon, AdminPanelSettings as AdminIcon } from '@mui/icons-material';
+import { Box, Button, Card, CardContent, Chip, CircularProgress, Divider, List, ListItem, ListItemText, Typography, IconButton, Container, TextField, Avatar, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Delete as DeleteIcon, Fingerprint as FingerprintIcon, AdminPanelSettings as AdminIcon, VpnKey as VpnKeyIcon, ContentCopy as CopyIcon } from '@mui/icons-material';
 import { useEffect, useState } from 'react';
 import * as Passwordless from '@passwordlessdev/passwordless-client';
 import api from '../api';
 import ThemeSwitcher from '../components/ThemeSwitcher';
 import { useNavigate } from '@tanstack/react-router';
 import { saveRecentAccount } from '../storage';
+
+interface Pat {
+  id: string;
+  name: string;
+  scopes: string;
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
+}
 
 const PASSKEY_PUBLIC_KEY = 'arapps:public:45993b214ebd42049727f9a86f56b5eb';
 const p = new Passwordless.Client({
@@ -41,6 +50,12 @@ interface Passkey {
 export default function Profile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [passkeys, setPasskeys] = useState<Passkey[]>([]);
+  const [pats, setPats] = useState<Pat[]>([]);
+  const [patName, setPatName] = useState('');
+  const [patScopes, setPatScopes] = useState('');
+  const [patExpiresInDays, setPatExpiresInDays] = useState('');
+  const [newPatRaw, setNewPatRaw] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
 
@@ -70,10 +85,21 @@ export default function Profile() {
     }
   };
 
+  const fetchPats = async () => {
+    try {
+      const res = await api.get('/pat/list');
+      setPats(res.data);
+    } catch {
+      console.error('Failed to fetch PATs');
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        await Promise.all([fetchProfile(), fetchPasskeys()]);
+        await Promise.all([fetchProfile(), fetchPasskeys(), fetchPats()]);
+      } catch (err) {
+        // Fallback for errors or handle specifically
       } finally {
         setLoading(false);
       }
@@ -110,6 +136,34 @@ export default function Profile() {
       setPasskeys(prev => prev.filter(pk => pk.credentialId !== credentialId));
     } catch {
       console.error('Delete error');
+    }
+  };
+
+  const handleCreatePat = async () => {
+    try {
+      const res = await api.post('/pat/create', {
+        name: patName,
+        scopes: patScopes,
+        expiresInDays: patExpiresInDays ? parseInt(patExpiresInDays) : null
+      });
+      setNewPatRaw(res.data.rawToken);
+      setPatName('');
+      setPatScopes('');
+      setPatExpiresInDays('');
+      fetchPats();
+    } catch (err) {
+      console.error('Failed to create PAT', err);
+      alert('Error creating Personal Access Token');
+    }
+  };
+
+  const handleDeletePat = async (id: string) => {
+    if (!confirm('Are you sure you want to revoke this Personal Access Token?')) return;
+    try {
+      await api.delete(`/pat/${id}`);
+      setPats(prev => prev.filter(p => p.id !== id));
+    } catch (err) {
+      console.error('Failed to delete PAT', err);
     }
   };
 
@@ -365,6 +419,143 @@ export default function Profile() {
 
         </CardContent>
       </Card>
+
+      <Card sx={{ mb: 4, mt: 4 }}>
+        <CardContent sx={{ p: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Box sx={{ flex: 1, mr: 2 }}>
+              <Typography variant="h6" fontWeight={700} sx={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                Personal Access Tokens (PATs)
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Generate long-lived tokens for API access and programmatic integrations.
+              </Typography>
+            </Box>
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<VpnKeyIcon />}
+              onClick={() => setCreateDialogOpen(true)}
+              sx={{ fontWeight: 700 }}
+            >
+              Generate Token
+            </Button>
+          </Box>
+          <Divider sx={{ mb: 3 }} />
+
+          {pats.length === 0 ? (
+            <Box sx={{ py: 6, textAlign: 'center', bgcolor: 'background.default', borderRadius: 1 }}>
+              <VpnKeyIcon sx={{ fontSize: 48, color: 'divider', mb: 2 }} />
+              <Typography color="text.secondary">
+                No active personal access tokens.
+              </Typography>
+            </Box>
+          ) : (
+            <List disablePadding>
+              {pats.map((pat, idx) => (
+                <ListItem
+                  key={pat.id}
+                  divider={idx !== pats.length - 1}
+                  secondaryAction={
+                    <IconButton edge="end" aria-label="delete" onClick={() => handleDeletePat(pat.id)}>
+                      <DeleteIcon color="error" fontSize="small" />
+                    </IconButton>
+                  }
+                  sx={{ px: 0, py: 2 }}
+                >
+                  <ListItemText
+                    primary={pat.name}
+                    primaryTypographyProps={{ fontWeight: 600 }}
+                    secondary={
+                      <Box component="span" display="block">
+                        <Box component="span" display="block" sx={{ mt: 0.5 }}>
+                          Scopes: {pat.scopes ? pat.scopes.split(' ').map(s => (
+                            <Chip key={s} label={s} size="small" variant="outlined" sx={{ mr: 0.5, height: 18, fontSize: '0.65rem' }} />
+                          )) : <Chip label="None" size="small" variant="outlined" sx={{ mr: 0.5, height: 18, fontSize: '0.65rem' }} />}
+                        </Box>
+                        <Box component="span" display="block" sx={{ mt: 0.5, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }}>
+                          Created: {new Date(pat.createdAt).toLocaleDateString()}
+                          {pat.expiresAt && ` | Expires: ${new Date(pat.expiresAt).toLocaleDateString()}`}
+                          {pat.lastUsedAt && ` | Last Used: ${new Date(pat.lastUsedAt).toLocaleString()}`}
+                        </Box>
+                      </Box>
+                    }
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialog for creating a new PAT */}
+      <Dialog open={createDialogOpen} onClose={() => { setCreateDialogOpen(false); setNewPatRaw(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Generate Personal Access Token</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          {newPatRaw ? (
+            <Box>
+              <Typography variant="body2" color="warning.main" fontWeight={700} gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                ⚠️ Warning: Make sure to copy this token now. It will not be shown again!
+              </Typography>
+              <Box sx={{ 
+                p: 2, 
+                bgcolor: 'background.default', 
+                borderRadius: 1, 
+                border: 1, 
+                borderColor: 'divider',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '0.9rem',
+                wordBreak: 'break-all',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+                my: 2
+              }}>
+                <code>{newPatRaw}</code>
+                <IconButton onClick={() => { navigator.clipboard.writeText(newPatRaw); alert('Copied to clipboard!'); }}>
+                  <CopyIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+              <TextField
+                label="Token Name"
+                fullWidth
+                placeholder="e.g. CI/CD pipeline, Script access"
+                value={patName}
+                onChange={e => setPatName(e.target.value)}
+              />
+              <TextField
+                label="Scopes (Space-separated)"
+                fullWidth
+                placeholder="openid profile offline_access"
+                value={patScopes}
+                onChange={e => setPatScopes(e.target.value)}
+              />
+              <TextField
+                label="Expires in (Days - Optional)"
+                fullWidth
+                type="number"
+                placeholder="Never"
+                value={patExpiresInDays}
+                onChange={e => setPatExpiresInDays(e.target.value)}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          {newPatRaw ? (
+            <Button variant="contained" onClick={() => { setCreateDialogOpen(false); setNewPatRaw(null); }}>Done</Button>
+          ) : (
+            <>
+              <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+              <Button variant="contained" onClick={handleCreatePat} disabled={!patName}>Generate</Button>
+            </>
+          )}
+        </DialogActions>
+      </Dialog>
 
       <Box sx={{ mt: 8, display: 'flex', justifyContent: 'center' }}>
         <Button

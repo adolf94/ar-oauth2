@@ -15,7 +15,7 @@ interface AppModel {
   autoGrantCount?: number;
   clientOnlyCount?: number;
   trustCount?: number;
-  applicationScopes?: { id: string; name: string; fullScopeName: string; description?: string; isAdminApproved?: boolean; isClientOnly?: boolean }[];
+  applicationScopes?: { id: string; name: string; fullScopeName: string; description?: string; isAdminApproved?: boolean; isClientOnly?: boolean; allowPat?: boolean; maxAccessTokenLifetime?: number }[];
   telegramBotClientId?: string;
   telegramBotClientSecret?: string;
 }
@@ -44,9 +44,9 @@ export default function AdminApps() {
 
   const [manageScopesApp, setManageScopesApp] = useState<AppModel | null>(null);
   const [scopesDialogOpen, setScopesDialogOpen] = useState(false);
-  const [newScope, setNewScope] = useState({ name: '', description: '', isAdminApproved: false, isClientOnly: false });
+  const [newScope, setNewScope] = useState({ name: '', description: '', isAdminApproved: false, isClientOnly: false, allowPat: true, maxAccessTokenLifetime: '' as string | number });
   const [addingScope, setAddingScope] = useState(false);
-  const [appScopes, setAppScopes] = useState<{ id: string; name: string; fullScopeName: string; isAdminApproved: boolean; isClientOnly: boolean; description?: string }[]>([]);
+  const [appScopes, setAppScopes] = useState<{ id: string; name: string; fullScopeName: string; isAdminApproved: boolean; isClientOnly: boolean; allowPat?: boolean; maxAccessTokenLifetime?: number; description?: string }[]>([]);
 
   const [appRoles, setAppRoles] = useState<{ id: string; name: string; description?: string }[]>([]);
   const [newRole, setNewRole] = useState({ name: '', description: '' });
@@ -273,9 +273,11 @@ export default function AdminApps() {
         name: newScope.name,
         description: newScope.description,
         isAdminApproved: newScope.isAdminApproved,
-        isClientOnly: newScope.isClientOnly
+        isClientOnly: newScope.isClientOnly,
+        allowPat: newScope.allowPat,
+        maxAccessTokenLifetime: newScope.maxAccessTokenLifetime ? parseInt(newScope.maxAccessTokenLifetime.toString()) : null
       });
-      setNewScope({ name: '', description: '', isAdminApproved: false, isClientOnly: false });
+      setNewScope({ name: '', description: '', isAdminApproved: false, isClientOnly: false, allowPat: true, maxAccessTokenLifetime: '' });
       // Refresh
       const res = await api.get(`/manage/scopes?client_id=${manageScopesApp.clientId}`);
       setAppScopes(res.data);
@@ -699,7 +701,8 @@ export default function AdminApps() {
                     <TableRow>
                       <TableCell><strong>Scope Name</strong></TableCell>
                       <TableCell><strong>Full Identifier</strong></TableCell>
-                      <TableCell><strong>Type</strong></TableCell>
+                      <TableCell><strong>Type / PAT</strong></TableCell>
+                      <TableCell><strong>Max Lifetime</strong></TableCell>
                       <TableCell><strong>Description</strong></TableCell>
                       <TableCell align="right"><strong>Actions</strong></TableCell>
                     </TableRow>
@@ -710,7 +713,7 @@ export default function AdminApps() {
                         <TableCell><code>{scope.name}</code></TableCell>
                         <TableCell><Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{scope.fullScopeName}</Typography></TableCell>
                         <TableCell>
-                          <Stack direction="row" spacing={1}>
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                             {scope.isAdminApproved && (
                               <Tooltip title="Auto-granted to all users">
                                 <Chip size="small" label="Auto-grant" color="success" icon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />} />
@@ -726,7 +729,15 @@ export default function AdminApps() {
                                 <Chip size="small" label="Manual" variant="outlined" icon={<PersonIcon sx={{ fontSize: '14px !important' }} />} />
                               </Tooltip>
                             )}
+                            {scope.allowPat !== false ? (
+                              <Chip size="small" label="PAT Allowed" color="primary" variant="filled" sx={{ height: 20, fontSize: '0.65rem' }} />
+                            ) : (
+                              <Chip size="small" label="PAT Blocked" color="default" variant="outlined" sx={{ height: 20, fontSize: '0.65rem' }} />
+                            )}
                           </Stack>
+                        </TableCell>
+                        <TableCell>
+                          {scope.maxAccessTokenLifetime ? `${scope.maxAccessTokenLifetime}s` : 'Default (3600s)'}
                         </TableCell>
                         <TableCell>{scope.description}</TableCell>
                         <TableCell align="right">
@@ -764,7 +775,7 @@ export default function AdminApps() {
                     onChange={(e) => setNewScope({ ...newScope, description: e.target.value })}
                     placeholder="Optional description"
                   />
-                  <Stack direction="row" spacing={3}>
+                  <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
                     <FormControlLabel
                       control={
                         <Switch 
@@ -797,7 +808,32 @@ export default function AdminApps() {
                         </Box>
                       }
                     />
+                    <FormControlLabel
+                      control={
+                        <Switch 
+                          checked={newScope.allowPat} 
+                          onChange={(e) => setNewScope({ ...newScope, allowPat: e.target.checked })} 
+                        />
+                      }
+                      label={
+                        <Box>
+                          <Typography variant="body2">Allow Personal Access Tokens (PAT)</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            Allow programmatic access using PAT credentials.
+                          </Typography>
+                        </Box>
+                      }
+                    />
                   </Stack>
+                  <TextField 
+                    size="small" 
+                    fullWidth 
+                    label="Max Access Token Lifetime (seconds)" 
+                    type="number"
+                    value={newScope.maxAccessTokenLifetime}
+                    onChange={(e) => setNewScope({ ...newScope, maxAccessTokenLifetime: e.target.value })}
+                    placeholder="e.g. 3600 (Optional)"
+                  />
                   <Button 
                     variant="contained" 
                     onClick={handleAddScope}
