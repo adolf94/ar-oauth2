@@ -361,28 +361,28 @@ namespace backend.Endpoints
                     return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "User not found." });
                 }
 
+                // The scope parameter is strictly required
+                if (string.IsNullOrEmpty(tokenReq.scope))
+                {
+                    return new BadRequestObjectResult(new { error = "invalid_request", error_description = "The scope parameter is required." });
+                }
+
                 // Resolve requested scopes. They must be a subset of the PAT's configured scopes.
                 var patScopes = pat.Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-                var scopesToEvaluate = patScopes;
-                bool isExplicitlyRequested = !string.IsNullOrEmpty(tokenReq.scope);
+                var requestedScopes = tokenReq.scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-                if (isExplicitlyRequested)
+                foreach (var s in requestedScopes)
                 {
-                    var requestedScopes = tokenReq.scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-                    foreach (var s in requestedScopes)
+                    if (!patScopes.Contains(s))
                     {
-                        if (!patScopes.Contains(s))
-                        {
-                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not granted by this personal access token." });
-                        }
+                        return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not granted by this personal access token." });
                     }
-                    scopesToEvaluate = requestedScopes;
                 }
 
                 var finalScopes = new List<string>();
                 int maxLifetime = 3600; // default for programmatic tokens
 
-                foreach (var s in scopesToEvaluate)
+                foreach (var s in requestedScopes)
                 {
                     string scopeClientId = client.ClientId;
                     string scopeName = s;
@@ -401,11 +401,7 @@ namespace backend.Endpoints
 
                     if (scopeClientId != client.ClientId && !isStandardScope)
                     {
-                        if (isExplicitlyRequested)
-                        {
-                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' does not belong to the requesting client." });
-                        }
-                        continue;
+                        return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' does not belong to the requesting client." });
                     }
 
                     var scopeDef = await _dbContext.ApplicationScopes
@@ -415,11 +411,7 @@ namespace backend.Endpoints
                     {
                         if (scopeDef.AllowPat == false)
                         {
-                            if (isExplicitlyRequested)
-                            {
-                                return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not allowed to be requested by Personal Access Tokens." });
-                            }
-                            continue;
+                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not allowed to be requested by Personal Access Tokens." });
                         }
 
                         if (scopeDef.MaxAccessTokenLifetime.HasValue)
