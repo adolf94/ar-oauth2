@@ -47,8 +47,11 @@ class ArAuthClient:
                 response.raise_for_status()
                 self._openid_config = response.json()
             except Exception as e:
+                error_msg = str(e)
+                if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                    error_msg = f"{error_msg} - Response: {e.response.text}"
                 raise ConfigurationError(
-                    f"Failed to fetch OpenID configuration from {url}: {str(e)}"
+                    f"Failed to fetch OpenID configuration from {url}: {error_msg}"
                 ) from e
         return self._openid_config
 
@@ -140,7 +143,10 @@ class ArAuthClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            raise TokenValidationError(f"Failed to retrieve userinfo: {str(e)}") from e
+            error_msg = str(e)
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                error_msg = f"{error_msg} - Response: {e.response.text}"
+            raise TokenValidationError(f"Failed to retrieve userinfo: {error_msg}") from e
 
     def exchange_code(self, code: str, redirect_uri: str, code_verifier: Optional[str] = None) -> Dict[str, Any]:
         """Exchanges an authorization code for tokens.
@@ -170,7 +176,10 @@ class ArAuthClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            raise TokenValidationError(f"Token exchange failed: {str(e)}") from e
+            error_msg = str(e)
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                error_msg = f"{error_msg} - Response: {e.response.text}"
+            raise TokenValidationError(f"Token exchange failed: {error_msg}") from e
 
     def refresh_token(self, refresh_token: str, scope: Optional[str] = None) -> Dict[str, Any]:
         """Refreshes the access token using a refresh token.
@@ -198,7 +207,10 @@ class ArAuthClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            raise TokenValidationError(f"Token refresh failed: {str(e)}") from e
+            error_msg = str(e)
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                error_msg = f"{error_msg} - Response: {e.response.text}"
+            raise TokenValidationError(f"Token refresh failed: {error_msg}") from e
 
     def client_credentials(self, scope: Optional[str] = None) -> Dict[str, Any]:
         """Requests an access token using the client_credentials grant (machine-to-machine).
@@ -225,4 +237,7 @@ class ArAuthClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            raise TokenValidationError(f"Client credentials request failed: {str(e)}") from e
+            error_msg = str(e)
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                error_msg = f"{error_msg} - Response: {e.response.text}"
+            raise TokenValidationError(f"Client credentials request failed: {error_msg}") from e

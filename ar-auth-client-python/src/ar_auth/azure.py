@@ -59,7 +59,9 @@ def _remove_param(sig: inspect.Signature, name: str) -> inspect.Signature:
 def validate_request(
     req: func.HttpRequest, 
     client: ArAuthClient, 
-    audience: Optional[str] = None
+    audience: Optional[str] = None,
+    required_scopes: Optional[List[str]] = None,
+    required_roles: Optional[List[str]] = None
 ) -> tuple[Optional[dict], Optional[func.HttpResponse]]:
     """Helper for Azure Functions to manually validate a request without a decorator.
     
@@ -102,6 +104,55 @@ def validate_request(
     token = parts[1]
     try:
         payload = client.verify_token(token, audience=audience)
+        
+        # Check scopes
+        if required_scopes:
+            token_scopes = payload.get("scope", "")
+            if isinstance(token_scopes, str):
+                token_scopes_list = token_scopes.split()
+            elif isinstance(token_scopes, list):
+                token_scopes_list = token_scopes
+            else:
+                token_scopes_list = []
+
+            for scope in required_scopes:
+                match_found = any(
+                    t_scope == scope or t_scope.endswith(f"/{scope}")
+                    for t_scope in token_scopes_list
+                )
+                if not match_found:
+                    return None, func.HttpResponse(
+                        json.dumps(
+                            {
+                                "error": "insufficient_scope",
+                                "description": f"Missing scope: {scope}",
+                            }
+                        ),
+                        status_code=403,
+                        mimetype="application/json",
+                        headers={"WWW-Authenticate": f"Bearer error=\"insufficient_scope\", error_description=\"Missing scope: {scope}\""},
+                    )
+
+        # Check roles
+        if required_roles:
+            token_roles = payload.get("roles", [])
+            if not isinstance(token_roles, list):
+                token_roles = [token_roles]
+
+            for role in required_roles:
+                if role not in token_roles:
+                    return None, func.HttpResponse(
+                        json.dumps(
+                            {
+                                "error": "insufficient_role",
+                                "description": f"Missing role: {role}",
+                            }
+                        ),
+                        status_code=403,
+                        mimetype="application/json",
+                        headers={"WWW-Authenticate": f"Bearer error=\"insufficient_scope\", error_description=\"Missing role: {role}\""},
+                    )
+
         return payload, None
     except TokenValidationError as e:
         return None, func.HttpResponse(
@@ -116,6 +167,37 @@ def validate_request(
             status_code=401,
             mimetype="application/json",
             headers={"WWW-Authenticate": f"Bearer error=\"invalid_token\", error_description=\"{str(e)}\""},
+        )
+
+
+class ArAuthAzureClient(ArAuthClient):
+    """An Azure-specific auth client that extends ArAuthClient with request validation."""
+    
+    def validate(
+        self, 
+        req: func.HttpRequest, 
+        audience: Optional[str] = None,
+        required_scopes: Optional[List[str]] = None,
+        required_roles: Optional[List[str]] = None
+    ) -> tuple[Optional[dict], Optional[func.HttpResponse]]:
+        """Manually validate an Azure Functions HttpRequest.
+        
+        Args:
+            req: The Azure Functions HttpRequest.
+            audience: Expected audience claim (aud). Optional.
+            required_scopes: A list of scopes required by the endpoint. Optional.
+            required_roles: A list of roles required by the endpoint. Optional.
+            
+        Returns:
+            A tuple of (payload, error_response). If successful, error_response is None.
+            If failed, payload is None and error_response contains the 401/403 HttpResponse.
+        """
+        return validate_request(
+            req=req,
+            client=self,
+            audience=audience,
+            required_scopes=required_scopes,
+            required_roles=required_roles
         )
 
 
