@@ -332,14 +332,7 @@ namespace backend.Endpoints
                     return new UnauthorizedObjectResult(new { error = "invalid_client" });
                 }
 
-                // If confidential client, validate client secret
-                if (client.ClientSecrets != null && client.ClientSecrets.Any())
-                {
-                    if (string.IsNullOrEmpty(tokenReq.client_secret) || !_clientService.VerifyClientSecret(tokenReq.client_secret, client.ClientSecrets))
-                    {
-                        return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed." });
-                    }
-                }
+
 
                 // Hash the incoming raw PAT
                 string tokenHash;
@@ -370,33 +363,26 @@ namespace backend.Endpoints
 
                 // Resolve requested scopes. They must be a subset of the PAT's configured scopes.
                 var patScopes = pat.Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-                var scopesToUse = pat.Scopes;
-                var requestedScopesList = patScopes;
+                var scopesToEvaluate = patScopes;
+                bool isExplicitlyRequested = !string.IsNullOrEmpty(tokenReq.scope);
 
-                if (!string.IsNullOrEmpty(tokenReq.scope))
+                if (isExplicitlyRequested)
                 {
-                    var requestedScopes = tokenReq.scope.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    var verifiedScopes = new List<string>();
-
+                    var requestedScopes = tokenReq.scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
                     foreach (var s in requestedScopes)
                     {
-                        if (patScopes.Contains(s))
-                        {
-                            verifiedScopes.Add(s);
-                        }
-                        else
+                        if (!patScopes.Contains(s))
                         {
                             return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not granted by this personal access token." });
                         }
                     }
-                    scopesToUse = string.Join(' ', verifiedScopes.Distinct());
-                    requestedScopesList = verifiedScopes.Distinct().ToList();
+                    scopesToEvaluate = requestedScopes;
                 }
 
-                // Verify AllowPat and MaxAccessTokenLifetime for all requested scopes
+                var finalScopes = new List<string>();
                 int maxLifetime = 3600; // default for programmatic tokens
-                
-                foreach (var s in requestedScopesList)
+
+                foreach (var s in scopesToEvaluate)
                 {
                     string scopeClientId = client.ClientId;
                     string scopeName = s;
@@ -411,6 +397,17 @@ namespace backend.Endpoints
                         }
                     }
 
+                    bool isStandardScope = s == "openid" || s == "profile" || s == "email" || s == "offline_access";
+
+                    if (scopeClientId != client.ClientId && !isStandardScope)
+                    {
+                        if (isExplicitlyRequested)
+                        {
+                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' does not belong to the requesting client." });
+                        }
+                        continue;
+                    }
+
                     var scopeDef = await _dbContext.ApplicationScopes
                         .FirstOrDefaultAsync(sc => sc.ClientId == scopeClientId && sc.Name == scopeName);
 
@@ -418,7 +415,11 @@ namespace backend.Endpoints
                     {
                         if (scopeDef.AllowPat == false)
                         {
-                            return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not allowed to be requested by Personal Access Tokens." });
+                            if (isExplicitlyRequested)
+                            {
+                                return new BadRequestObjectResult(new { error = "invalid_scope", error_description = $"The scope '{s}' is not allowed to be requested by Personal Access Tokens." });
+                            }
+                            continue;
                         }
 
                         if (scopeDef.MaxAccessTokenLifetime.HasValue)
@@ -429,7 +430,11 @@ namespace backend.Endpoints
                             }
                         }
                     }
+
+                    finalScopes.Add(s);
                 }
+
+                var scopesToUse = string.Join(' ', finalScopes.Distinct());
 
                 // Generate signed access JWT using TokenService
                 var sid = Guid.NewGuid().ToString();

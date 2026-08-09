@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Ar.Auth.OpenId</PackageId>
+    <Version>1.0.5-local</Version>
     <Description>Core OIDC client for Atlas Rig Auth — token verification, code exchange, and OAuth 2.0 flows.</Description>
   </PropertyGroup>
 
