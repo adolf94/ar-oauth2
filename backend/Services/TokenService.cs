@@ -331,15 +331,25 @@ namespace backend.Services
             _dbContext.Tokens.Add(token);
             await _dbHelper.SaveChangesAsync();
 
-            return token.Id;
+            return $"{token.Id}.{token.Sid}";
         }
 
         public async Task<Token?> ValidateRefreshTokenAsync(string tokenValue, string clientId)
         {
+            if (string.IsNullOrEmpty(tokenValue))
+                return null;
+
+            var parts = tokenValue.Split('.', 2);
+            var tokenId = parts[0];
+            var sid = parts.Length > 1 ? parts[1] : string.Empty;
+
             var token = await _dbContext.Tokens
-                .FirstOrDefaultAsync(t => t.Id == tokenValue && t.ClientId == clientId);
+                .FirstOrDefaultAsync(t => t.Id == tokenId && t.ClientId == clientId);
 
             if (token == null || token.ExpiresAt < DateTime.UtcNow)
+                return null;
+
+            if (token.Sid != sid)
                 return null;
 
             return token;

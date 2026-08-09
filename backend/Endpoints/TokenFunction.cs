@@ -76,6 +76,52 @@ namespace backend.Endpoints
             if (tokenReq == null)
                 return new BadRequestObjectResult(new { error = "invalid_request" });
 
+            var result = await ProcessTokenRequestAsync(tokenReq);
+
+            string logCode = string.Empty;
+            if (tokenReq.grant_type == "refresh_token")
+            {
+                logCode = tokenReq.refresh_token;
+            }
+            else if (tokenReq.grant_type == "authorization_code")
+            {
+                logCode = tokenReq.code;
+            }
+            else if (tokenReq.grant_type == "personal_access_token" && !string.IsNullOrEmpty(tokenReq.token))
+            {
+                using (var sha256 = System.Security.Cryptography.SHA256.Create())
+                {
+                    var hashedBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(tokenReq.token));
+                    logCode = Convert.ToHexString(hashedBytes).ToLower();
+                }
+            }
+
+            var log = new backend.Models.TokenRequestLog
+            {
+                DateLogged = DateTime.UtcNow,
+                GrantType = tokenReq.grant_type,
+                Code = logCode
+            };
+
+            if (result is OkObjectResult ok && ok.Value is TokenResponse tokenResp)
+            {
+                log.IsError = false;
+                log.NewCode = tokenResp.RefreshToken ?? string.Empty;
+            }
+            else if (result is ObjectResult err && err.Value != null)
+            {
+                log.IsError = true;
+                log.Reason = JsonSerializer.Serialize(err.Value);
+            }
+
+            _dbContext.TokenRequestLogs.Add(log);
+            await _dbContext.SaveChangesAsync();
+
+            return result;
+        }
+
+        private async Task<IActionResult> ProcessTokenRequestAsync(TokenRequest tokenReq)
+        {
             // ── authorization_code grant ────────────────────────────────────────────
             if (tokenReq.grant_type == "authorization_code")
             {
@@ -163,13 +209,19 @@ namespace backend.Endpoints
 
                 var storedToken = await _tokenService.ValidateRefreshTokenAsync(tokenReq.refresh_token, tokenReq.client_id);
                 if (storedToken == null)
+                {
+                    _logger.LogWarning("Refresh token validation failed for client {ClientId}. Token is invalid or expired.", tokenReq.client_id);
                     return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired." });
+                }
 
                 var user   = await _userService.GetByIdAsync(storedToken.UserId);
                 var client = await _clientService.GetByClientIdAsync(tokenReq.client_id);
 
                 if (user == null || client == null)
+                {
+                    _logger.LogWarning("Refresh token validation failed. User or client not found for client {ClientId}.", tokenReq.client_id);
                     return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "User or client not found." });
+                }
 
                 // Secret Validation for Refresh Token
                 if (client.ClientSecrets != null && client.ClientSecrets.Any())
@@ -213,7 +265,10 @@ namespace backend.Endpoints
                 var newRefreshToken = await _tokenService.RotateRefreshTokenAsync(storedToken, sid: sid);
 
                 if (string.IsNullOrEmpty(newRefreshToken))
+                {
+                    _logger.LogWarning("Refresh token rotation failed for client {ClientId}. Token was already used or revoked.", tokenReq.client_id);
                     return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "Refresh token was already used or revoked." });
+                }
 
 
                 string? idToken = null;

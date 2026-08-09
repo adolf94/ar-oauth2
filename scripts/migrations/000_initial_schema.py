@@ -7,8 +7,8 @@ import datetime
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Values default to the local Cosmos DB emulator settings from local.settings.json
-CONNECTION_STRING = os.environ.get("COSMOS_CONNECTION_STRING", "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;")
-DATABASE_NAME = os.environ.get("COSMOS_DATABASE_NAME", "ArAuth")
+CONNECTION_STRING = os.environ.get("COSMOS_CONNECTION_STRING") or "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;"
+DATABASE_NAME = os.environ.get("COSMOS_DATABASE_NAME") or "ArAuth"
 
 def migrate():
     print("Connecting to Cosmos DB...")
