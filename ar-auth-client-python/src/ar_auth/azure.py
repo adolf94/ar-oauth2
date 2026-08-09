@@ -56,6 +56,69 @@ def _remove_param(sig: inspect.Signature, name: str) -> inspect.Signature:
     return sig.replace(parameters=params)
 
 
+def validate_request(
+    req: func.HttpRequest, 
+    client: ArAuthClient, 
+    audience: Optional[str] = None
+) -> tuple[Optional[dict], Optional[func.HttpResponse]]:
+    """Helper for Azure Functions to manually validate a request without a decorator.
+    
+    Returns:
+        (payload, None) on success
+        (None, HttpResponse) with the error if authentication fails
+    """
+    auth_header = req.headers.get("Authorization") or req.headers.get("authorization")
+    if not auth_header:
+        return None, func.HttpResponse(
+            json.dumps({"error": "authorization_header_missing", "description": "Authorization header is expected"}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    parts = auth_header.split()
+    if parts[0].lower() != "bearer":
+        return None, func.HttpResponse(
+            json.dumps({"error": "invalid_header", "description": "Authorization header must start with Bearer"}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"WWW-Authenticate": "Bearer error=\"invalid_request\", error_description=\"Authorization header must start with Bearer\""},
+        )
+    elif len(parts) == 1:
+        return None, func.HttpResponse(
+            json.dumps({"error": "invalid_header", "description": "Token not found"}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"WWW-Authenticate": "Bearer error=\"invalid_request\", error_description=\"Token not found\""},
+        )
+    elif len(parts) > 2:
+        return None, func.HttpResponse(
+            json.dumps({"error": "invalid_header", "description": "Authorization header must be Bearer token"}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"WWW-Authenticate": "Bearer error=\"invalid_request\", error_description=\"Authorization header must be Bearer token\""},
+        )
+
+    token = parts[1]
+    try:
+        payload = client.verify_token(token, audience=audience)
+        return payload, None
+    except TokenValidationError as e:
+        return None, func.HttpResponse(
+            json.dumps({"error": "invalid_token", "description": str(e)}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"WWW-Authenticate": f"Bearer error=\"invalid_token\", error_description=\"{str(e)}\""},
+        )
+    except InvalidTokenError as e:
+        return None, func.HttpResponse(
+            json.dumps({"error": "invalid_token", "description": f"Invalid token: {str(e)}"}),
+            status_code=401,
+            mimetype="application/json",
+            headers={"WWW-Authenticate": f"Bearer error=\"invalid_token\", error_description=\"{str(e)}\""},
+        )
+
+
 # ── Decorator ─────────────────────────────────────────────────────────────────
 def requires_auth_azure(
     authority: str = "https://auth.adolfrey.com/api",
@@ -136,6 +199,7 @@ def requires_auth_azure(
                     ),
                     status_code=401,
                     mimetype="application/json",
+                    headers={"WWW-Authenticate": "Bearer"},
                 )
 
             parts = auth_header.split()
@@ -149,6 +213,7 @@ def requires_auth_azure(
                     ),
                     status_code=401,
                     mimetype="application/json",
+                    headers={"WWW-Authenticate": "Bearer error=\"invalid_request\", error_description=\"Authorization header must start with Bearer\""},
                 )
             elif len(parts) == 1:
                 return func.HttpResponse(
@@ -157,6 +222,7 @@ def requires_auth_azure(
                     ),
                     status_code=401,
                     mimetype="application/json",
+                    headers={"WWW-Authenticate": "Bearer error=\"invalid_request\", error_description=\"Token not found\""},
                 )
             elif len(parts) > 2:
                 return func.HttpResponse(
@@ -168,6 +234,7 @@ def requires_auth_azure(
                     ),
                     status_code=401,
                     mimetype="application/json",
+                    headers={"WWW-Authenticate": "Bearer error=\"invalid_request\", error_description=\"Authorization header must be Bearer token\""},
                 )
 
             token = parts[1]
@@ -195,6 +262,7 @@ def requires_auth_azure(
                                 ),
                                 status_code=403,
                                 mimetype="application/json",
+                                headers={"WWW-Authenticate": f"Bearer error=\"insufficient_scope\", error_description=\"Missing scope: {scope}\""},
                             )
 
                 # Check roles
@@ -214,6 +282,7 @@ def requires_auth_azure(
                                 ),
                                 status_code=403,
                                 mimetype="application/json",
+                                headers={"WWW-Authenticate": f"Bearer error=\"insufficient_scope\", error_description=\"Missing role: {role}\""},
                             )
 
                 # ── Deliver payload ──────────────────────────────────────────
@@ -234,12 +303,14 @@ def requires_auth_azure(
                     json.dumps({"error": "invalid_token", "description": str(e)}),
                     status_code=401,
                     mimetype="application/json",
+                    headers={"WWW-Authenticate": f"Bearer error=\"invalid_token\", error_description=\"{str(e)}\""},
                 )
             except InvalidTokenError as e:
                 return func.HttpResponse(
                     json.dumps({"error": "invalid_token", "description": f"Invalid token: {str(e)}"}),
                     status_code=401,
                     mimetype="application/json",
+                    headers={"WWW-Authenticate": f"Bearer error=\"invalid_token\", error_description=\"{str(e)}\""},
                 )
 
         # ── Signature patch ──────────────────────────────────────────────────

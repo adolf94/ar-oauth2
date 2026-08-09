@@ -40,4 +40,16 @@ public class ArAuthOptions
             return auth.TrimEnd('/');
         }
     }
+
+    /// <summary>Expected audience (aud) claim. Optional.</summary>
+    public string? Audience { get; set; }
+
+    /// <summary>Roles required to access the function. Optional.</summary>
+    public string[]? RequiredRoles { get; set; }
+
+    /// <summary>Scopes required to access the function. Optional.</summary>
+    public string[]? RequiredScopes { get; set; }
+
+    /// <summary>A list of function names that should bypass authentication. Optional.</summary>
+    public string[]? ExcludedFunctions { get; set; }
 }

@@ -24,13 +24,13 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
     /// </summary>
     public ArAuthMiddleware(
         IArAuthClient client,
-        ArAuthMiddlewareOptions? middlewareOptions = null)
+        ArAuthOptions? options = null)
     {
         _client = client;
-        _audience = middlewareOptions?.Audience;
-        _requiredRoles = middlewareOptions?.RequiredRoles ?? Array.Empty<string>();
-        _requiredScopes = middlewareOptions?.RequiredScopes ?? Array.Empty<string>();
-        _excludedFunctions = new HashSet<string>(middlewareOptions?.ExcludedFunctions ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        _audience = options?.Audience;
+        _requiredRoles = options?.RequiredRoles ?? Array.Empty<string>();
+        _requiredScopes = options?.RequiredScopes ?? Array.Empty<string>();
+        _excludedFunctions = new HashSet<string>(options?.ExcludedFunctions ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />
@@ -56,6 +56,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
         {
             var response = httpRequestData.CreateResponse();
             response.StatusCode = HttpStatusCode.Unauthorized;
+            response.Headers.Add("WWW-Authenticate", "Bearer");
             await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes("Missing Authorization header."));
             context.GetInvocationResult().Value = response;
             return;
@@ -66,6 +67,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
         {
             var response = httpRequestData.CreateResponse();
             response.StatusCode = HttpStatusCode.Unauthorized;
+            response.Headers.Add("WWW-Authenticate", "Bearer error=\"invalid_request\", error_description=\"Invalid Authorization header format\"");
             await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes("Invalid Authorization header format. Expected: Bearer <token>."));
             context.GetInvocationResult().Value = response;
             return;
@@ -90,6 +92,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
                     {
                         var response = httpRequestData.CreateResponse();
                         response.StatusCode = HttpStatusCode.Forbidden;
+                        response.Headers.Add("WWW-Authenticate", "Bearer error=\"insufficient_scope\", error_description=\"Missing required role\"");
                         await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Missing required role: {role}"));
                         context.GetInvocationResult().Value = response;
                         return;
@@ -110,6 +113,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
                     {
                         var response = httpRequestData.CreateResponse();
                         response.StatusCode = HttpStatusCode.Forbidden;
+                        response.Headers.Add("WWW-Authenticate", $"Bearer error=\"insufficient_scope\", error_description=\"Missing required scope: {scope}\"");
                         await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Missing required scope: {scope}"));
                         context.GetInvocationResult().Value = response;
                         return;
@@ -124,6 +128,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
         {
             var response = httpRequestData.CreateResponse();
             response.StatusCode = HttpStatusCode.Unauthorized;
+            response.Headers.Add("WWW-Authenticate", "Bearer error=\"invalid_token\", error_description=\"Token validation failed\"");
             await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Token validation failed: {ex.Message}"));
             context.GetInvocationResult().Value = response;
             return;
@@ -131,22 +136,4 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
 
         await next(context);
     }
-}
-
-/// <summary>
-/// Options for configuring the ArAuth Azure Functions middleware.
-/// </summary>
-public class ArAuthMiddlewareOptions
-{
-    /// <summary>Expected audience (aud) claim. Optional.</summary>
-    public string? Audience { get; set; }
-
-    /// <summary>Roles required to access the function. Optional.</summary>
-    public string[]? RequiredRoles { get; set; }
-
-    /// <summary>Scopes required to access the function. Optional.</summary>
-    public string[]? RequiredScopes { get; set; }
-
-    /// <summary>A list of function names that should bypass authentication. Optional.</summary>
-    public string[]? ExcludedFunctions { get; set; }
 }
