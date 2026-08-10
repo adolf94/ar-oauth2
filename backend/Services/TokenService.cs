@@ -59,6 +59,18 @@ namespace backend.Services
 
                 foreach (var qs in qualifiedScopes)
                 {
+                    // Self-referencing scope: api://<clientId>/scope where clientId == requesting client
+                    // No cross-app trust record exists for self; allow it directly.
+                    var qsParts = qs.Substring(6).Split('/');
+                    var qsTargetClientId = qsParts.Length >= 1 ? qsParts[0] : string.Empty;
+                    if (qsTargetClientId == client.ClientId)
+                    {
+                        if (!trustedAudiences.Contains(client.ClientId))
+                            trustedAudiences.Add(client.ClientId);
+                        validatedCrossScopes.Add(qs);
+                        continue;
+                    }
+
                     // Find if current client is trusted to request this specific scope
                     var trust = trusts.FirstOrDefault(t => t.Matches(qs));
                     if (trust != null)
