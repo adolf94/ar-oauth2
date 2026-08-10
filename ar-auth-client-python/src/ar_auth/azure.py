@@ -116,8 +116,9 @@ def validate_request(
                 token_scopes_list = []
 
             for scope in required_scopes:
+                expected_full_scope = f"api://{client.client_id}/{scope}" if client.client_id else None
                 match_found = any(
-                    t_scope == scope or t_scope.endswith(f"/{scope}")
+                    t_scope == scope or (expected_full_scope and t_scope == expected_full_scope)
                     for t_scope in token_scopes_list
                 )
                 if not match_found:
@@ -204,6 +205,7 @@ class ArAuthAzureClient(ArAuthClient):
 # ── Decorator ─────────────────────────────────────────────────────────────────
 def requires_auth_azure(
     authority: str = "https://auth.adolfrey.com/api",
+    client_id: Optional[str] = None,
     audience: Optional[str] = None,
     required_roles: Optional[List[str]] = None,
     required_scopes: Optional[List[str]] = None,
@@ -225,6 +227,7 @@ def requires_auth_azure(
 
     Args:
         authority: The base authority URL. Defaults to 'https://auth.adolfrey.com/api'.
+        client_id: The client ID of the application. Optional.
         audience: Expected audience claim (aud). Optional.
         required_roles: Roles required by the endpoint. Optional.
         required_scopes: Scopes required by the endpoint. Optional.
@@ -254,7 +257,7 @@ def requires_auth_azure(
             "Install it via `pip install ar-auth-client[azure]`."
         )
 
-    client = ArAuthClient(authority=authority)
+    client = ArAuthClient(authority=authority, client_id=client_id)
     roles_req = required_roles or []
     scopes_req = required_scopes or []
 
@@ -334,7 +337,12 @@ def requires_auth_azure(
                         token_scopes_list = []
 
                     for scope in scopes_req:
-                        if scope not in token_scopes_list:
+                        expected_full_scope = f"api://{client.client_id}/{scope}" if client.client_id else None
+                        match_found = any(
+                            t_scope == scope or (expected_full_scope and t_scope == expected_full_scope)
+                            for t_scope in token_scopes_list
+                        )
+                        if not match_found:
                             return func.HttpResponse(
                                 json.dumps(
                                     {
