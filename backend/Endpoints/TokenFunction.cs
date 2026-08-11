@@ -430,7 +430,7 @@ namespace backend.Endpoints
 
                 // Generate signed access JWT using TokenService
                 var sid = Guid.NewGuid().ToString();
-                var (accessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, scopesToUse, sid: sid);
+                var (accessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, scopesToUse, sid: sid, lifetimeSeconds: maxLifetime);
 
                 // Update LastUsedAt timestamp
                 pat.LastUsedAt = DateTime.UtcNow;

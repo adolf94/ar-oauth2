@@ -11,7 +11,7 @@ namespace backend.Models
         public bool IsAdminApproved { get; set; } = false;
         public bool? IsClientOnly { get; set; } = false;
         public bool AllowPat { get; set; } = false;
-        public int? MaxAccessTokenLifetime { get; set; } // in seconds
+        public int? MaxAccessTokenLifetime { get; set; } = 3600; // in seconds
         public DateTime? CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Fully qualified scope might look like: "api://[clientId]/[name]"

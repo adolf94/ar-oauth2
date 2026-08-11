@@ -32,7 +32,7 @@ namespace backend.Services
 
         // ── Access Token ────────────────────────────────────────────
 
-        public async Task<(string Token, string Scopes)> GenerateAccessToken(User user, Client client, string scopes, string? sid = null)
+        public async Task<(string Token, string Scopes)> GenerateAccessToken(User user, Client client, string scopes, string? sid = null,  int lifetimeSeconds = 300)
         {
             var key = _rsaKeyService.GetSigningKey();
 
@@ -190,7 +190,7 @@ namespace backend.Services
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
-                Expires = DateTime.UtcNow.AddMinutes(5),
+                Expires = DateTime.UtcNow.AddSeconds(lifetimeSeconds),
                 Issuer = Issuer,
                 SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
             };
