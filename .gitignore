@@ -1,1 +1,3 @@
 ar-auth-client/dist
+bin
+obj
