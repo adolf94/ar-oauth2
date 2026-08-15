@@ -28,7 +28,7 @@ export const initUserManager = (config: AuthConfig): UserManager => {
     scope: config.scope,
     userStore: new WebStorageStateStore({ store: window.localStorage }),
     monitorSession: false,
-    automaticSilentRenew: config.isPrototype ? false : (config.automaticSilentRenew ?? true),
+    automaticSilentRenew: false,
     extraQueryParams: {
       ...(config.theme ? { theme: config.theme } : {}),
       ...(config.isPrototype ? { prototype: 'true' } : {}),
@@ -46,8 +46,7 @@ export const getUserManager = (): UserManager => {
   return _userManager;
 };
 
-let _activeRefreshPromises: Record<string, Promise<OidcUser | null> | undefined> = {};
-let _refreshLock = Promise.resolve();
+let _activeRefreshPromise: Promise<OidcUser | null> | null = null;
 
 export const refreshAccessToken = async (scope?: string): Promise<OidcUser | null> => {
   // Never call the /token endpoint in prototype mode
@@ -55,22 +54,41 @@ export const refreshAccessToken = async (scope?: string): Promise<OidcUser | nul
     return null;
   }
 
-  const scopeKey = scope || 'default';
-
-  // If a refresh is already in progress for this EXACT scope, wait for it
-  if (_activeRefreshPromises[scopeKey]) {
-    return _activeRefreshPromises[scopeKey];
+  // Single in-flight refresh promise for all concurrent callers
+  if (_activeRefreshPromise) {
+    return _activeRefreshPromise;
   }
 
-  const executeRefresh = async (): Promise<OidcUser | null> => {
-    const userManager = getUserManager();
-    const user = await userManager.getUser();
-
-    if (!user || !user.refresh_token) {
-      return null;
-    }
-
+  _activeRefreshPromise = (async (): Promise<OidcUser | null> => {
     try {
+      const userManager = getUserManager();
+      const user = await userManager.getUser();
+
+      if (!user || !user.refresh_token) {
+        return null;
+      }
+
+      // Check if user token was already refreshed and is still valid (> 30s remaining)
+      const nowSec = Math.floor(Date.now() / 1000);
+      const isFresh = user.expires_at ? user.expires_at > nowSec + 30 : !user.expired;
+
+      if (isFresh) {
+        if (!scope) {
+          return user;
+        }
+        const userScopes = (user.scope || '').split(' ').map(s => s.toLowerCase());
+        const targetScope = scope.toLowerCase();
+        const clientPrefix = `api://${userManager.settings.client_id}/`.toLowerCase();
+        const hasRequestedScope = userScopes.some(s =>
+          s === targetScope ||
+          s === `${clientPrefix}${targetScope}` ||
+          s.replace(clientPrefix, '') === targetScope
+        );
+        if (hasRequestedScope) {
+          return user;
+        }
+      }
+
       const metadata = await userManager.metadataService.getMetadata();
       const tokenEndpoint = metadata.token_endpoint;
 
@@ -117,22 +135,10 @@ export const refreshAccessToken = async (scope?: string): Promise<OidcUser | nul
     } catch (error) {
       console.error('Manual refresh failed:', error);
       return null;
-    }
-  };
-
-  const promise = (async () => {
-    // Wait for any previous refresh to finish (success or fail) to prevent concurrent uses of the same refresh_token
-    await _refreshLock.catch(() => {});
-    
-    try {
-      return await executeRefresh();
     } finally {
-      delete _activeRefreshPromises[scopeKey];
+      _activeRefreshPromise = null;
     }
   })();
 
-  _activeRefreshPromises[scopeKey] = promise;
-  _refreshLock = promise.then(() => {}).catch(() => {});
-
-  return promise;
+  return _activeRefreshPromise;
 };

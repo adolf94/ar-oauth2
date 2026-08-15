@@ -271,16 +271,21 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
     setAccessToken(oidcUser.access_token);
     setIdToken(oidcUser.id_token ?? null);
     
+    const userScopeKey = oidcUser.scope || config.scope;
     setAccessTokens(prev => ({
       ...prev,
-      [oidcUser.scope || config.scope]: {
+      [userScopeKey]: {
+        token: oidcUser.access_token,
+        expiresAt: oidcUser.expires_at || 0
+      },
+      [config.scope]: {
         token: oidcUser.access_token,
         expiresAt: oidcUser.expires_at || 0
       }
     }));
 
     // Cache in session storage for scope-specific reuse
-    const storageKey = `ar_auth_token_${config.clientId}_${oidcUser.scope || config.scope}`;
+    const storageKey = `ar_auth_token_${config.clientId}_${userScopeKey}`;
     sessionStorage.setItem(storageKey, JSON.stringify({
       token: oidcUser.access_token,
       expiresAt: oidcUser.expires_at
@@ -290,10 +295,11 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
   };
   const getAccessToken = async (scope?: string): Promise<string | null> => {
     const currentScope = scope || config.scope;
+    const nowSec = Date.now() / 1000;
     
     // 1. Check React state (Fastest)
     const stateCached = accessTokens[currentScope];
-    if (stateCached && stateCached.expiresAt > (Date.now() / 1000) + 30) {
+    if (stateCached && stateCached.expiresAt > nowSec + 30) {
       return stateCached.token;
     }
 
@@ -304,7 +310,7 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
     if (stored) {
       try {
         const { token, expiresAt } = JSON.parse(stored);
-        if (expiresAt > (Date.now() / 1000) + 30) {
+        if (expiresAt > nowSec + 30) {
           // Sync back to React state for next call
           setAccessTokens(prev => ({ ...prev, [currentScope]: { token, expiresAt } }));
           return token;
@@ -322,13 +328,20 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
     let oidcUser = await userManager.getUser();
 
     if (scope && oidcUser && !oidcUser.expired) {
-      const userScopes = oidcUser.scope?.split(' ') || [];
-      if (!userScopes.includes(scope)) {
+      const userScopes = (oidcUser.scope || '').split(' ').map(s => s.toLowerCase());
+      const scopeLower = scope.toLowerCase();
+      const prefix = `api://${config.clientId}/`.toLowerCase();
+      const hasScopeMatch = userScopes.some(s =>
+        s === scopeLower ||
+        s === `${prefix}${scopeLower}` ||
+        s.replace(prefix, '') === scopeLower
+      );
+      if (!hasScopeMatch) {
         oidcUser = null; // Forces refresh with new scope
       }
     }
 
-    if (!oidcUser || oidcUser.expired) {
+    if (!oidcUser || oidcUser.expired || (oidcUser.expires_at && oidcUser.expires_at <= nowSec + 30)) {
       try {
         oidcUser = await refreshAccessToken(scope);
         if (oidcUser) {
