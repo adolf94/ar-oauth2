@@ -73,49 +73,83 @@ namespace backend.Endpoints
                 tokenReq = JsonSerializer.Deserialize<TokenRequest>(requestBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
 
-            if (tokenReq == null)
-                return new BadRequestObjectResult(new { error = "invalid_request" });
-
-            var result = await ProcessTokenRequestAsync(tokenReq);
-
-            string logCode = string.Empty;
-            if (tokenReq.grant_type == "refresh_token")
+            IActionResult result;
+            try
             {
-                logCode = tokenReq.refresh_token;
-            }
-            else if (tokenReq.grant_type == "authorization_code")
-            {
-                logCode = tokenReq.code;
-            }
-            else if (tokenReq.grant_type == "personal_access_token" && !string.IsNullOrEmpty(tokenReq.token))
-            {
-                using (var sha256 = System.Security.Cryptography.SHA256.Create())
+                if (tokenReq == null)
                 {
-                    var hashedBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(tokenReq.token));
-                    logCode = Convert.ToHexString(hashedBytes).ToLower();
+                    result = new BadRequestObjectResult(new { error = "invalid_request" });
+                }
+                else
+                {
+                    result = await ProcessTokenRequestAsync(tokenReq);
                 }
             }
-
-            var log = new backend.Models.TokenRequestLog
+            catch (Exception ex)
             {
-                DateLogged = DateTime.UtcNow,
-                GrantType = tokenReq.grant_type,
-                Code = logCode
-            };
-
-            if (result is OkObjectResult ok && ok.Value is TokenResponse tokenResp)
-            {
-                log.IsError = false;
-                log.NewCode = tokenResp.RefreshToken ?? string.Empty;
-            }
-            else if (result is ObjectResult err && err.Value != null)
-            {
-                log.IsError = true;
-                log.Reason = JsonSerializer.Serialize(err.Value);
+                _logger.LogError(ex, "Unhandled exception during token request processing.");
+                result = new ObjectResult(new { error = "server_error", error_description = ex.Message })
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
             }
 
-            _dbContext.TokenRequestLogs.Add(log);
-            await _dbContext.SaveChangesAsync();
+            try
+            {
+                string logCode = string.Empty;
+                string grantType = tokenReq?.grant_type ?? string.Empty;
+
+                if (tokenReq != null)
+                {
+                    if (tokenReq.grant_type == "refresh_token")
+                    {
+                        logCode = tokenReq.refresh_token;
+                    }
+                    else if (tokenReq.grant_type == "authorization_code")
+                    {
+                        logCode = tokenReq.code;
+                    }
+                    else if (tokenReq.grant_type == "personal_access_token" && !string.IsNullOrEmpty(tokenReq.token))
+                    {
+                        using (var sha256 = System.Security.Cryptography.SHA256.Create())
+                        {
+                            var hashedBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(tokenReq.token));
+                            logCode = Convert.ToHexString(hashedBytes).ToLower();
+                        }
+                    }
+                }
+
+                var log = new backend.Models.TokenRequestLog
+                {
+                    DateLogged = DateTime.UtcNow,
+                    GrantType = grantType,
+                    Code = logCode
+                };
+
+                if (result is OkObjectResult ok && ok.Value is TokenResponse tokenResp)
+                {
+                    log.IsError = false;
+                    log.NewCode = tokenResp.RefreshToken ?? string.Empty;
+                }
+                else if (result is ObjectResult err && err.Value != null)
+                {
+                    log.IsError = true;
+                    log.Reason = JsonSerializer.Serialize(err.Value);
+                }
+
+                // Detach any other tracked modified/deleted entities that might have failed
+                if (log.IsError)
+                {
+                    _dbContext.ChangeTracker.Clear();
+                }
+
+                _dbContext.TokenRequestLogs.Add(log);
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to persist token request log.");
+            }
 
             return result;
         }
