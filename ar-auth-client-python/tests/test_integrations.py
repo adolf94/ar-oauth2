@@ -111,6 +111,7 @@ class TestAzureFunctionsIntegration(unittest.TestCase):
     @unittest.skipUnless(HAS_AZURE, "Azure Functions SDK is not installed")
     @patch("ar_auth.client.ArAuthClient.verify_token")
     def test_azure_decorator_success(self, mock_verify):
+        import asyncio
         mock_verify.return_value = {
             "sub": "user123",
             "scope": "openid read",
@@ -122,14 +123,14 @@ class TestAzureFunctionsIntegration(unittest.TestCase):
         req.headers = {"Authorization": "Bearer mock_token"}
 
         @requires_auth_azure(required_scopes=["read"], required_roles=["admin"])
-        def my_function(request, ar_auth_user):
+        async def my_function(request, ar_auth_user):
             return func.HttpResponse(
                 json.dumps({"user": ar_auth_user}),
                 status_code=200,
                 mimetype="application/json",
             )
 
-        response = my_function(req)
+        response = asyncio.run(my_function(req))
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.get_body())
         self.assertEqual(data["user"]["sub"], "user123")
@@ -137,14 +138,15 @@ class TestAzureFunctionsIntegration(unittest.TestCase):
     @unittest.skipUnless(HAS_AZURE, "Azure Functions SDK is not installed")
     @patch("ar_auth.client.ArAuthClient.verify_token")
     def test_azure_decorator_missing_header(self, mock_verify):
+        import asyncio
         req = MagicMock(spec=func.HttpRequest)
         req.headers = {}
 
         @requires_auth_azure()
-        def my_function(request, ar_auth_user=None):
+        async def my_function(request, ar_auth_user=None):
             return func.HttpResponse("OK", status_code=200)
 
-        response = my_function(req)
+        response = asyncio.run(my_function(req))
         self.assertEqual(response.status_code, 401)
         data = json.loads(response.get_body())
         self.assertEqual(data["error"], "authorization_header_missing")

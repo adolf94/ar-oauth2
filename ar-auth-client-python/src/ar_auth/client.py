@@ -89,13 +89,13 @@ class ArAuthClient:
             self._jwks_client = jwt.PyJWKClient(self.jwks_uri)
         return self._jwks_client
 
-    def verify_token(self, token: str, audience: Optional[str] = None, leeway: int = 0) -> Dict[str, Any]:
+    def verify_token(self, token: str, audience: Optional[str] = None, leeway: int = 30) -> Dict[str, Any]:
         """Decodes and validates a JWT access token or ID token using RS256 signature verification.
 
         Args:
             token: The raw JWT string.
             audience: The expected audience (aud) claim. Optional.
-            leeway: Expiration check leeway in seconds. Defaults to 0.
+            leeway: Expiration check leeway in seconds. Defaults to 30.
 
         Returns:
             The decoded token claims dictionary.

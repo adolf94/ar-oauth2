@@ -133,7 +133,7 @@ class TestArAuthClient(unittest.TestCase):
 
         mock_fetch_jwks.return_value = self.mock_jwks
 
-        # Generate an expired token
+        # Generate an expired token past 60s leeway
         payload = {
             "iss": "https://auth.adolfrey.com/api",
             "sub": "user123",
@@ -144,6 +144,27 @@ class TestArAuthClient(unittest.TestCase):
         client = ArAuthClient(authority="auth.adolfrey.com/api")
         with self.assertRaises(TokenValidationError):
             client.verify_token(token)
+
+    @patch("jwt.PyJWKClient.fetch_data")
+    @patch("requests.get")
+    def test_verify_token_leeway(self, mock_get, mock_fetch_jwks):
+        mock_config_response = MagicMock()
+        mock_config_response.json.return_value = self.mock_oidc_config
+        mock_get.return_value = mock_config_response
+
+        mock_fetch_jwks.return_value = self.mock_jwks
+
+        # Token expired 15 seconds ago (within 30s leeway)
+        payload = {
+            "iss": "https://auth.adolfrey.com/api",
+            "sub": "user123",
+            "exp": int(time.time()) - 15,
+        }
+        token = jwt.encode(payload, self.private_key, algorithm="RS256", headers={"kid": self.kid})
+
+        client = ArAuthClient(authority="auth.adolfrey.com/api")
+        decoded = client.verify_token(token)
+        self.assertEqual(decoded["sub"], "user123")
 
     @patch("requests.post")
     def test_exchange_code(self, mock_post):
