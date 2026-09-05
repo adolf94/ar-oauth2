@@ -47,8 +47,11 @@ public class ArAuthOptions
     /// <summary>Roles required to access the function. Optional.</summary>
     public string[]? RequiredRoles { get; set; }
 
-    /// <summary>Scopes required to access the function. Optional.</summary>
+    /// <summary>Scopes required to access the function (all of them). Optional.</summary>
     public string[]? RequiredScopes { get; set; }
+
+    /// <summary>Scopes of which the token must have at least one. Optional.</summary>
+    public string[]? AnyScopes { get; set; }
 
     /// <summary>A list of function names that should bypass authentication. Optional.</summary>
     public string[]? ExcludedFunctions { get; set; }

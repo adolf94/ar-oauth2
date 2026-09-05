@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Ar.Auth.OpenId.AzureFunctions</PackageId>
-    <Version>1.0.5-local</Version>
+    <Version>1.0.6-local</Version>
     <Description>Azure Functions Isolated Worker middleware for Atlas Rig Auth token validation.</Description>
   </PropertyGroup>
 

@@ -407,6 +407,8 @@ def get_profile():
     return jsonify({"sub": user["sub"], "email": user.get("email")})
 ```
 
+Note: `required_scopes` requires **all** listed scopes; `any_scopes` requires **at least one**.
+
 #### Standalone Verification
 ```python
 from ar_auth import ArAuthClient

@@ -56,12 +56,23 @@ def _remove_param(sig: inspect.Signature, name: str) -> inspect.Signature:
     return sig.replace(parameters=params)
 
 
+def _scope_matches(scope: str, token_scopes_list: List[str], client_id: Optional[str]) -> bool:
+    """Return True if *scope* is present in the token scopes, either bare or
+    in the Azure full form 'api://{client_id}/{scope}'."""
+    expected_full_scope = f"api://{client_id}/{scope}" if client_id else None
+    return any(
+        t_scope == scope or (expected_full_scope and t_scope == expected_full_scope)
+        for t_scope in token_scopes_list
+    )
+
+
 def validate_request(
     req: func.HttpRequest, 
     client: ArAuthClient, 
     audience: Optional[str] = None,
     required_scopes: Optional[List[str]] = None,
-    required_roles: Optional[List[str]] = None
+    required_roles: Optional[List[str]] = None,
+    any_scopes: Optional[List[str]] = None,
 ) -> tuple[Optional[dict], Optional[func.HttpResponse]]:
     """Helper for Azure Functions to manually validate a request without a decorator.
     
@@ -106,22 +117,17 @@ def validate_request(
         payload = client.verify_token(token, audience=audience)
         
         # Check scopes
-        if required_scopes:
-            token_scopes = payload.get("scope", "")
-            if isinstance(token_scopes, str):
-                token_scopes_list = token_scopes.split()
-            elif isinstance(token_scopes, list):
-                token_scopes_list = token_scopes
-            else:
-                token_scopes_list = []
+        token_scopes = payload.get("scope", "")
+        if isinstance(token_scopes, str):
+            token_scopes_list = token_scopes.split()
+        elif isinstance(token_scopes, list):
+            token_scopes_list = token_scopes
+        else:
+            token_scopes_list = []
 
+        if required_scopes:
             for scope in required_scopes:
-                expected_full_scope = f"api://{client.client_id}/{scope}" if client.client_id else None
-                match_found = any(
-                    t_scope == scope or (expected_full_scope and t_scope == expected_full_scope)
-                    for t_scope in token_scopes_list
-                )
-                if not match_found:
+                if not _scope_matches(scope, token_scopes_list, client.client_id):
                     return None, func.HttpResponse(
                         json.dumps(
                             {
@@ -133,6 +139,20 @@ def validate_request(
                         mimetype="application/json",
                         headers={"WWW-Authenticate": f"Bearer error=\"insufficient_scope\", error_description=\"Missing scope: {scope}\""},
                     )
+
+        if any_scopes and not any(_scope_matches(scope, token_scopes_list, client.client_id) for scope in any_scopes):
+            description = f"Missing scope: any of {', '.join(any_scopes)}"
+            return None, func.HttpResponse(
+                json.dumps(
+                    {
+                        "error": "insufficient_scope",
+                        "description": description,
+                    }
+                ),
+                status_code=403,
+                mimetype="application/json",
+                headers={"WWW-Authenticate": f"Bearer error=\"insufficient_scope\", error_description=\"{description}\""},
+            )
 
         # Check roles
         if required_roles:
@@ -179,15 +199,17 @@ class ArAuthAzureClient(ArAuthClient):
         req: func.HttpRequest, 
         audience: Optional[str] = None,
         required_scopes: Optional[List[str]] = None,
-        required_roles: Optional[List[str]] = None
+        required_roles: Optional[List[str]] = None,
+        any_scopes: Optional[List[str]] = None,
     ) -> tuple[Optional[dict], Optional[func.HttpResponse]]:
         """Manually validate an Azure Functions HttpRequest.
         
         Args:
             req: The Azure Functions HttpRequest.
             audience: Expected audience claim (aud). Optional.
-            required_scopes: A list of scopes required by the endpoint. Optional.
+            required_scopes: A list of scopes required by the endpoint (all of them). Optional.
             required_roles: A list of roles required by the endpoint. Optional.
+            any_scopes: Scopes of which the token must have at least one. Optional.
             
         Returns:
             A tuple of (payload, error_response). If successful, error_response is None.
@@ -198,7 +220,8 @@ class ArAuthAzureClient(ArAuthClient):
             client=self,
             audience=audience,
             required_scopes=required_scopes,
-            required_roles=required_roles
+            required_roles=required_roles,
+            any_scopes=any_scopes
         )
 
 
@@ -209,6 +232,7 @@ def requires_auth_azure(
     audience: Optional[str] = None,
     required_roles: Optional[List[str]] = None,
     required_scopes: Optional[List[str]] = None,
+    any_scopes: Optional[List[str]] = None,
 ) -> Callable:
     """Azure Functions decorator to validate ar-auth Bearer tokens.
 
@@ -230,7 +254,8 @@ def requires_auth_azure(
         client_id: The client ID of the application. Optional.
         audience: Expected audience claim (aud). Optional.
         required_roles: Roles required by the endpoint. Optional.
-        required_scopes: Scopes required by the endpoint. Optional.
+        required_scopes: Scopes required by the endpoint (all of them). Optional.
+        any_scopes: Scopes of which the token must have at least one. Optional.
 
     Returns:
         The Azure Function handler decorator.
@@ -260,6 +285,7 @@ def requires_auth_azure(
     client = ArAuthClient(authority=authority, client_id=client_id)
     roles_req = required_roles or []
     scopes_req = required_scopes or []
+    any_scopes_req = any_scopes or []
 
     def decorator(f: Callable) -> Callable:
         # Detect at decoration time whether the wrapped function explicitly accepts
@@ -327,22 +353,17 @@ def requires_auth_azure(
                 payload = client.verify_token(token, audience=audience)
 
                 # Check scopes
-                if scopes_req:
-                    token_scopes = payload.get("scope", "")
-                    if isinstance(token_scopes, str):
-                        token_scopes_list = token_scopes.split()
-                    elif isinstance(token_scopes, list):
-                        token_scopes_list = token_scopes
-                    else:
-                        token_scopes_list = []
+                token_scopes = payload.get("scope", "")
+                if isinstance(token_scopes, str):
+                    token_scopes_list = token_scopes.split()
+                elif isinstance(token_scopes, list):
+                    token_scopes_list = token_scopes
+                else:
+                    token_scopes_list = []
 
+                if scopes_req:
                     for scope in scopes_req:
-                        expected_full_scope = f"api://{client.client_id}/{scope}" if client.client_id else None
-                        match_found = any(
-                            t_scope == scope or (expected_full_scope and t_scope == expected_full_scope)
-                            for t_scope in token_scopes_list
-                        )
-                        if not match_found:
+                        if not _scope_matches(scope, token_scopes_list, client.client_id):
                             return func.HttpResponse(
                                 json.dumps(
                                     {
@@ -354,6 +375,20 @@ def requires_auth_azure(
                                 mimetype="application/json",
                                 headers={"WWW-Authenticate": f"Bearer error=\"insufficient_scope\", error_description=\"Missing scope: {scope}\""},
                             )
+
+                if any_scopes_req and not any(_scope_matches(scope, token_scopes_list, client.client_id) for scope in any_scopes_req):
+                    description = f"Missing scope: any of {', '.join(any_scopes_req)}"
+                    return func.HttpResponse(
+                        json.dumps(
+                            {
+                                "error": "insufficient_scope",
+                                "description": description,
+                            }
+                        ),
+                        status_code=403,
+                        mimetype="application/json",
+                        headers={"WWW-Authenticate": f"Bearer error=\"insufficient_scope\", error_description=\"{description}\""},
+                    )
 
                 # Check roles
                 if roles_req:

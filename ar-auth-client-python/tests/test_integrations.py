@@ -77,6 +77,50 @@ class TestFastAPIIntegration(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    @unittest.skipUnless(HAS_FASTAPI, "FastAPI is not installed")
+    @patch("ar_auth.client.ArAuthClient.verify_token")
+    def test_fastapi_dependency_any_scopes_success(self, mock_verify):
+        mock_verify.return_value = {
+            "sub": "user123",
+            "scope": "openid read",
+        }
+
+        app = FastAPI()
+        auth_scheme = ArAuthBearer(any_scopes=["read", "write"])
+
+        @app.get("/secure")
+        def secure_route(user=Depends(auth_scheme)):
+            return {"user": user}
+
+        client = TestClient(app)
+        response = client.get(
+            "/secure", headers={"Authorization": "Bearer mock_token"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    @unittest.skipUnless(HAS_FASTAPI, "FastAPI is not installed")
+    @patch("ar_auth.client.ArAuthClient.verify_token")
+    def test_fastapi_dependency_any_scopes_missing(self, mock_verify):
+        mock_verify.return_value = {
+            "sub": "user123",
+            "scope": "openid",
+        }
+
+        app = FastAPI()
+        auth_scheme = ArAuthBearer(any_scopes=["read", "write"])
+
+        @app.get("/secure")
+        def secure_route(user=Depends(auth_scheme)):
+            return {"user": user}
+
+        client = TestClient(app)
+        response = client.get(
+            "/secure", headers={"Authorization": "Bearer mock_token"}
+        )
+
+        self.assertEqual(response.status_code, 403)
+
 
 class TestFlaskIntegration(unittest.TestCase):
 
@@ -104,6 +148,28 @@ class TestFlaskIntegration(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertEqual(data["user"]["sub"], "user123")
+
+    @unittest.skipUnless(HAS_FLASK, "Flask is not installed")
+    @patch("ar_auth.client.ArAuthClient.verify_token")
+    def test_flask_decorator_any_scopes(self, mock_verify):
+        mock_verify.return_value = {
+            "sub": "user123",
+            "scope": "openid write",
+        }
+
+        app = Flask(__name__)
+
+        @app.route("/secure")
+        @requires_auth(any_scopes=["read", "write"])
+        def secure_route():
+            return jsonify({"user": g.ar_auth_user})
+
+        client = app.test_client()
+        response = client.get(
+            "/secure", headers={"Authorization": "Bearer mock_token"}
+        )
+
+        self.assertEqual(response.status_code, 200)
 
 
 class TestAzureFunctionsIntegration(unittest.TestCase):
@@ -150,6 +216,46 @@ class TestAzureFunctionsIntegration(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         data = json.loads(response.get_body())
         self.assertEqual(data["error"], "authorization_header_missing")
+
+    @unittest.skipUnless(HAS_AZURE, "Azure Functions SDK is not installed")
+    @patch("ar_auth.client.ArAuthClient.verify_token")
+    def test_azure_decorator_any_scopes_success(self, mock_verify):
+        import asyncio
+        mock_verify.return_value = {
+            "sub": "user123",
+            "scope": "openid read",
+        }
+
+        req = MagicMock(spec=func.HttpRequest)
+        req.headers = {"Authorization": "Bearer mock_token"}
+
+        @requires_auth_azure(any_scopes=["read", "write"])
+        async def my_function(request, ar_auth_user=None):
+            return func.HttpResponse("OK", status_code=200)
+
+        response = asyncio.run(my_function(req))
+        self.assertEqual(response.status_code, 200)
+
+    @unittest.skipUnless(HAS_AZURE, "Azure Functions SDK is not installed")
+    @patch("ar_auth.client.ArAuthClient.verify_token")
+    def test_azure_decorator_any_scopes_missing(self, mock_verify):
+        import asyncio
+        mock_verify.return_value = {
+            "sub": "user123",
+            "scope": "openid",
+        }
+
+        req = MagicMock(spec=func.HttpRequest)
+        req.headers = {"Authorization": "Bearer mock_token"}
+
+        @requires_auth_azure(any_scopes=["read", "write"])
+        async def my_function(request, ar_auth_user=None):
+            return func.HttpResponse("OK", status_code=200)
+
+        response = asyncio.run(my_function(req))
+        self.assertEqual(response.status_code, 403)
+        data = json.loads(response.get_body())
+        self.assertEqual(data["error"], "insufficient_scope")
 
 
 if __name__ == "__main__":

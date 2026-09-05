@@ -136,6 +136,13 @@ def get_dashboard(user_payload: Dict[str, Any] = Depends(admin_auth)):
     }
 ```
 
+`required_scopes` requires **all** listed scopes. Use `any_scopes` when the token only needs **at least one** of the listed scopes:
+
+```python
+# Token must have 'read' OR 'write' (at least one)
+auth = ArAuthBearer(any_scopes=["read", "write"])
+```
+
 ### 2. Flask Integration
 
 Protect Flask endpoints using the `@requires_auth` decorator. The decoded token claims are automatically stored in Flask's request context variable `flask.g.ar_auth_user`.
@@ -156,6 +163,8 @@ def get_profile():
         "roles": user.get("roles", [])
     })
 ```
+
+`@requires_auth` also supports `any_scopes` (at least one of the listed scopes) in addition to `required_scopes` (all of them).
 
 ### 3. Azure Functions (API) Integration
 

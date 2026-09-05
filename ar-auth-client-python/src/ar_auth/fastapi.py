@@ -16,6 +16,7 @@ class ArAuthBearer(HTTPBearer):
         audience: Optional[str] = None,
         required_roles: Optional[List[str]] = None,
         required_scopes: Optional[List[str]] = None,
+        any_scopes: Optional[List[str]] = None,
         auto_error: bool = True,
     ):
         """Initializes the security dependency.
@@ -24,7 +25,8 @@ class ArAuthBearer(HTTPBearer):
             authority: The base authority URL. Defaults to 'auth.adolfrey.com/api'.
             audience: Expected audience claim (aud). Optional.
             required_roles: Roles required by the endpoint. Optional.
-            required_scopes: Scopes required by the endpoint. Optional.
+            required_scopes: Scopes required by the endpoint (all of them). Optional.
+            any_scopes: Scopes of which the token must have at least one. Optional.
             auto_error: Whether to automatically raise exceptions on verification errors.
         """
         super().__init__(auto_error=auto_error)
@@ -32,6 +34,7 @@ class ArAuthBearer(HTTPBearer):
         self.audience = audience
         self.required_roles = required_roles or []
         self.required_scopes = required_scopes or []
+        self.any_scopes = any_scopes or []
 
     async def __call__(self, request: Request) -> Optional[Dict[str, Any]]:
         """Validates the Authorization header and decodes the token.
@@ -54,21 +57,27 @@ class ArAuthBearer(HTTPBearer):
             payload = self.client.verify_token(token, audience=self.audience)
 
             # Check scopes
-            if self.required_scopes:
-                token_scopes = payload.get("scope", "")
-                if isinstance(token_scopes, str):
-                    token_scopes_list = token_scopes.split()
-                elif isinstance(token_scopes, list):
-                    token_scopes_list = token_scopes
-                else:
-                    token_scopes_list = []
+            token_scopes = payload.get("scope", "")
+            if isinstance(token_scopes, str):
+                token_scopes_list = token_scopes.split()
+            elif isinstance(token_scopes, list):
+                token_scopes_list = token_scopes
+            else:
+                token_scopes_list = []
 
+            if self.required_scopes:
                 for scope in self.required_scopes:
                     if scope not in token_scopes_list:
                         raise HTTPException(
                             status_code=403,
                             detail=f"Missing required scope: {scope}",
                         )
+
+            if self.any_scopes and not any(scope in token_scopes_list for scope in self.any_scopes):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Missing required scope: any of {', '.join(self.any_scopes)}",
+                )
 
             # Check roles
             if self.required_roles:

@@ -17,6 +17,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
     private readonly string? _audience;
     private readonly string[] _requiredRoles;
     private readonly string[] _requiredScopes;
+    private readonly string[] _anyScopes;
     private readonly HashSet<string> _excludedFunctions;
 
     /// <summary>
@@ -30,6 +31,7 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
         _audience = options?.Audience;
         _requiredRoles = options?.RequiredRoles ?? Array.Empty<string>();
         _requiredScopes = options?.RequiredScopes ?? Array.Empty<string>();
+        _anyScopes = options?.AnyScopes ?? Array.Empty<string>();
         _excludedFunctions = new HashSet<string>(options?.ExcludedFunctions ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
     }
 
@@ -101,24 +103,33 @@ public class ArAuthMiddleware : IFunctionsWorkerMiddleware
             }
 
             // Check required scopes
-            if (_requiredScopes.Length > 0)
-            {
-                var scopeClaim = principal.FindFirst("scope")?.Value ?? "";
-                var userScopes = scopeClaim.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var scopeClaim = principal.FindFirst("scope")?.Value ?? "";
+            var userScopes = scopeClaim.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                foreach (var scope in _requiredScopes)
+            foreach (var scope in _requiredScopes)
+            {
+                if (!userScopes.Contains(scope))
                 {
-                    if (!userScopes.Contains(scope))
-                    {
-                        var response = httpRequestData.CreateResponse();
-                        response.StatusCode = HttpStatusCode.Forbidden;
-                        response.Headers.Add("WWW-Authenticate", $"Bearer error=\"insufficient_scope\", error_description=\"Missing required scope: {scope}\"");
-                        await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Missing required scope: {scope}"));
-                        context.GetInvocationResult().Value = response;
-                        return;
-                    }
+                    var response = httpRequestData.CreateResponse();
+                    response.StatusCode = HttpStatusCode.Forbidden;
+                    response.Headers.Add("WWW-Authenticate", $"Bearer error=\"insufficient_scope\", error_description=\"Missing required scope: {scope}\"");
+                    await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Missing required scope: {scope}"));
+                    context.GetInvocationResult().Value = response;
+                    return;
                 }
+            }
+
+            // Check any-of scopes (at least one must be present)
+            if (_anyScopes.Length > 0 && !_anyScopes.Any(userScopes.Contains))
+            {
+                var missing = string.Join(", ", _anyScopes);
+                var response = httpRequestData.CreateResponse();
+                response.StatusCode = HttpStatusCode.Forbidden;
+                response.Headers.Add("WWW-Authenticate", $"Bearer error=\"insufficient_scope\", error_description=\"Missing required scope: any of {missing}\"");
+                await response.Body.WriteAsync(System.Text.Encoding.UTF8.GetBytes($"Missing required scope: any of {missing}"));
+                context.GetInvocationResult().Value = response;
+                return;
             }
 
             // Store the principal in FunctionContext for downstream use
