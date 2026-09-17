@@ -73,6 +73,32 @@ namespace backend.Endpoints
                 tokenReq = JsonSerializer.Deserialize<TokenRequest>(requestBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
 
+            // RFC 6749 2.3.1: clients may authenticate with HTTP Basic instead of form body.
+            // oauth4webapi (client_secret_basic) sends client_id/client_secret ONLY in the header.
+            if (tokenReq != null)
+            {
+                var authHeader = req.Headers["Authorization"].FirstOrDefault();
+                if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var credentials = Encoding.UTF8.GetString(Convert.FromBase64String(authHeader.Substring("Basic ".Length).Trim()));
+                        var separatorIndex = credentials.IndexOf(':');
+                        if (separatorIndex >= 0)
+                        {
+                            var headerClientId = credentials.Substring(0, separatorIndex);
+                            var headerClientSecret = credentials.Substring(separatorIndex + 1);
+                            if (string.IsNullOrEmpty(tokenReq.client_id)) tokenReq.client_id = headerClientId;
+                            if (string.IsNullOrEmpty(tokenReq.client_secret)) tokenReq.client_secret = headerClientSecret;
+                        }
+                    }
+                    catch (FormatException)
+                    {
+                        // Malformed Basic header; fall through to form-based validation.
+                    }
+                }
+            }
+
             IActionResult result;
             try
             {

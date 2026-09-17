@@ -395,9 +395,16 @@ namespace backend.Services
                 new Claim(JwtRegisteredClaimNames.Name, user.Name),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()),
-                new Claim(JwtRegisteredClaimNames.Iat,   DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
-                new Claim("nonce", nonce)
+                new Claim(JwtRegisteredClaimNames.Iat,   DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
             };
+
+            // Only emit the nonce claim when one was actually sent in the authorization request.
+            // RPs using oauth4webapi (e.g. Immich) reject ANY nonce claim - including an empty one -
+            // when they did not send a nonce ("unexpected ID Token 'nonce' claim value").
+            if (!string.IsNullOrEmpty(nonce))
+            {
+                claims.Add(new Claim("nonce", nonce));
+            }
 
             if (!string.IsNullOrEmpty(user.Picture))
             {
