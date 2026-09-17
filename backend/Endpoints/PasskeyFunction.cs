@@ -25,6 +25,7 @@ namespace backend.Endpoints
         public string? state { get; set; }
         public string? code_challenge { get; set; }
         public string? code_challenge_method { get; set; }
+        public string? nonce { get; set; }
         public string? scope { get; set; }
         public string? link_token { get; set; }
     }
@@ -105,7 +106,8 @@ namespace backend.Endpoints
                     requestBody.redirect_uri ?? string.Empty,
                     requestBody.code_challenge ?? string.Empty,
                     requestBody.code_challenge_method ?? string.Empty,
-                    requestBody.scope ?? string.Empty
+                    requestBody.scope ?? string.Empty,
+                    requestBody.nonce ?? string.Empty
                 );
 
                 await _dbHelper.CommitBatchAsync();

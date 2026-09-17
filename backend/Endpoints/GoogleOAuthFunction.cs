@@ -67,6 +67,7 @@ namespace backend.Endpoints
             var stateStr = (string?)req.Query["state"] ?? string.Empty;
             var codeChallenge = (string?)req.Query["code_challenge"] ?? string.Empty;
             var codeChallengeMethod = (string?)req.Query["code_challenge_method"] ?? string.Empty;
+            var nonce = (string?)req.Query["nonce"] ?? string.Empty;
             var scope = (string?)req.Query["scope"] ?? string.Empty;
             var linkToken = (string?)req.Query["link_token"];
 
@@ -86,6 +87,7 @@ namespace backend.Endpoints
                 new Claim("original_state", stateStr),
                 new Claim("code_challenge", codeChallenge),
                 new Claim("code_challenge_method", codeChallengeMethod),
+                new Claim("nonce", nonce),
                 new Claim("scope", scope)
             };
 
@@ -174,6 +176,7 @@ namespace backend.Endpoints
             var spOriginalState = principal.FindFirst("original_state")?.Value ?? "";
             var spCodeChallenge = principal.FindFirst("code_challenge")?.Value ?? "";
             var spCodeChallengeMethod = principal.FindFirst("code_challenge_method")?.Value ?? "";
+            var spNonce = principal.FindFirst("nonce")?.Value ?? "";
             var spScope = principal.FindFirst("scope")?.Value ?? "";
             var linkToken = principal.FindFirst("link_token")?.Value;
 
@@ -315,7 +318,8 @@ namespace backend.Endpoints
                 spRedirectUri,
                 spCodeChallenge,
                 spCodeChallengeMethod,
-                spScope
+                spScope,
+                spNonce
             );
 
             await _dbHelper.CommitBatchAsync();

@@ -9,6 +9,7 @@ namespace backend.Models
         public string RedirectUri { get; set; } = string.Empty;
         public string CodeChallenge { get; set; } = string.Empty;
         public string CodeChallengeMethod { get; set; } = string.Empty;
+        public string Nonce { get; set; } = string.Empty;
         public DateTime ExpiresAt { get; set; }
         // UserId isn't there yet because the code might be generated *before* login in a pure API sense, 
         // but typically the code is generated *after* the user logs in. Let's add UserId.

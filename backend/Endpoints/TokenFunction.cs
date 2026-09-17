@@ -220,7 +220,7 @@ namespace backend.Endpoints
                 string? idToken = null;
                 if (scopesToUse.Contains("openid"))
                 {
-                   idToken = _tokenService.GenerateIdToken(user, client, nonce: "", sid: sid);
+                   idToken = _tokenService.GenerateIdToken(user, client, nonce: validCode.Nonce ?? "", sid: sid);
                 }
 
 

@@ -42,6 +42,7 @@ namespace backend.Endpoints
                 state                 = (string?)req.Query["state"]                 ?? string.Empty,
                 code_challenge        = (string?)req.Query["code_challenge"]        ?? string.Empty,
                 code_challenge_method = (string?)req.Query["code_challenge_method"] ?? string.Empty,
+                nonce                 = (string?)req.Query["nonce"]                 ?? string.Empty,
                 scope                 = (string?)req.Query["scope"]                 ?? string.Empty,
                 link_token            = (string?)req.Query["link_token"]
             };
@@ -85,7 +86,8 @@ namespace backend.Endpoints
                         request.redirect_uri,
                         request.code_challenge,
                         request.code_challenge_method,
-                        request.scope
+                        request.scope,
+                        request.nonce
                     );
 
                     var successUrl = request.redirect_uri;
@@ -104,6 +106,7 @@ namespace backend.Endpoints
                            $"&state={Uri.EscapeDataString(request.state)}" +
                            $"&code_challenge={Uri.EscapeDataString(request.code_challenge)}" +
                            $"&code_challenge_method={Uri.EscapeDataString(request.code_challenge_method)}" +
+                           $"&nonce={Uri.EscapeDataString(request.nonce)}" +
                            $"&scope={Uri.EscapeDataString(request.scope)}" +
                            (string.IsNullOrEmpty(request.link_token) ? "" : $"&link_token={Uri.EscapeDataString(request.link_token)}") +
                            (isPrototype ? "&prototype=true" : "");

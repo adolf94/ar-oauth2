@@ -43,7 +43,8 @@ namespace backend.Endpoints
                 SubjectTypesSupported             = new[] { "public" },
                 IdTokenSigningAlgValuesSupported   = new[] { "RS256" },
                 ScopesSupported                   = new[] { "openid", "profile", "email" },
-                TokenEndpointAuthMethodsSupported  = new[] { "none" },    // PKCE-only, no client_secret
+                TokenEndpointAuthMethodsSupported  = new[] { "none", "client_secret_post" }, // public clients use PKCE, confidential clients use client_secret_post
+                CodeChallengeMethodsSupported      = new[] { "S256" },
                 GrantTypesSupported               = new[] { "authorization_code", "refresh_token" },
                 ClaimsSupported                   = new[] { "sub", "email", "roles", "scope", "client_id" }
             };
@@ -83,6 +84,9 @@ namespace backend.Endpoints
 
         [JsonPropertyName("token_endpoint_auth_methods_supported")]
         public string[] TokenEndpointAuthMethodsSupported { get; set; } = Array.Empty<string>();
+
+        [JsonPropertyName("code_challenge_methods_supported")]
+        public string[] CodeChallengeMethodsSupported { get; set; } = Array.Empty<string>();
 
         [JsonPropertyName("grant_types_supported")]
         public string[] GrantTypesSupported { get; set; } = Array.Empty<string>();

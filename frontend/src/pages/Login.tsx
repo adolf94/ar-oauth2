@@ -19,6 +19,7 @@ interface LoginSearchParams {
   state?: string;
   code_challenge?: string;
   code_challenge_method?: string;
+  nonce?: string;
   scope?: string;
   link_token?: string;
   prototype?: string;
@@ -38,6 +39,7 @@ export default function Login() {
     if (searchParams.state) params.append('state', searchParams.state);
     if (searchParams.code_challenge) params.append('code_challenge', searchParams.code_challenge);
     if (searchParams.code_challenge_method) params.append('code_challenge_method', searchParams.code_challenge_method);
+    if (searchParams.nonce) params.append('nonce', searchParams.nonce);
     if (searchParams.scope) params.append('scope', searchParams.scope);
     if (searchParams.link_token) params.append('link_token', searchParams.link_token);
     if (hint) params.append('login_hint', hint);
@@ -52,6 +54,7 @@ export default function Login() {
     if (searchParams.state) params.append('state', searchParams.state);
     if (searchParams.code_challenge) params.append('code_challenge', searchParams.code_challenge);
     if (searchParams.code_challenge_method) params.append('code_challenge_method', searchParams.code_challenge_method);
+    if (searchParams.nonce) params.append('nonce', searchParams.nonce);
     if (searchParams.scope) params.append('scope', searchParams.scope);
     if (searchParams.link_token) params.append('link_token', searchParams.link_token);
     window.location.href = `/api/login/telegram?${params.toString()}`;
@@ -75,6 +78,7 @@ export default function Login() {
         state: searchParams.state,
         code_challenge: searchParams.code_challenge,
         code_challenge_method: searchParams.code_challenge_method,
+        nonce: searchParams.nonce,
         scope: searchParams.scope,
         link_token: searchParams.link_token
       });

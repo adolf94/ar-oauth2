@@ -21,6 +21,7 @@ namespace backend.Endpoints
         public string redirect_uri { get; set; } = string.Empty;
         public string code_challenge { get; set; } = string.Empty;
         public string code_challenge_method { get; set; } = string.Empty;
+        public string nonce { get; set; } = string.Empty;
         public string scope { get; set; } = string.Empty;
         public string state { get; set; } = string.Empty;
     }
@@ -96,7 +97,8 @@ namespace backend.Endpoints
                         loginReq.redirect_uri,
                         loginReq.code_challenge,
                         loginReq.code_challenge_method,
-                        loginReq.scope
+                        loginReq.scope,
+                        loginReq.nonce
                     );
 
                     await _dbHelper.CommitBatchAsync();

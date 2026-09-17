@@ -19,7 +19,7 @@ namespace backend.Services
             _dbHelper = dbHelper;
         }
 
-        public async Task<AuthCode> CreateAuthCodeAsync(string clientId, string userId, string redirectUri, string codeChallenge, string codeChallengeMethod, string scopes)
+        public async Task<AuthCode> CreateAuthCodeAsync(string clientId, string userId, string redirectUri, string codeChallenge, string codeChallengeMethod, string scopes, string nonce = "")
         {
             var authCode = new AuthCode
             {
@@ -29,6 +29,7 @@ namespace backend.Services
                 CodeChallenge = codeChallenge,
                 CodeChallengeMethod = codeChallengeMethod,
                 Scopes = scopes,
+                Nonce = nonce ?? string.Empty,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(5) // Auth code valid for 5 mins
             };
 
