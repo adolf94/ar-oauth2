@@ -1,9 +1,18 @@
 import requests
 import jwt
+import importlib.metadata
 from typing import Dict, Any, Optional
 from jwt.exceptions import ExpiredSignatureError, InvalidSignatureError, InvalidTokenError
 
 from .exceptions import TokenValidationError, ConfigurationError
+
+try:
+    _SDK_VERSION = importlib.metadata.version("ar-auth-python-client")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover
+    _SDK_VERSION = "0.4.0"
+
+# User-Agent header identifying requests made by this SDK.
+USER_AGENT = f"ar-auth-python/{_SDK_VERSION}"
 
 
 class ArAuthClient:
@@ -43,7 +52,7 @@ class ArAuthClient:
         if not self._openid_config:
             url = f"{self.authority}/.well-known/openid-configuration"
             try:
-                response = requests.get(url, timeout=10)
+                response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=10)
                 response.raise_for_status()
                 self._openid_config = response.json()
             except Exception as e:
@@ -137,7 +146,7 @@ class ArAuthClient:
         Returns:
             The UserInfo response payload.
         """
-        headers = {"Authorization": f"Bearer {access_token}"}
+        headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT}
         try:
             response = requests.get(self.userinfo_endpoint, headers=headers, timeout=10)
             response.raise_for_status()

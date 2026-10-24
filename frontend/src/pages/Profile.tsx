@@ -1,4 +1,4 @@
-import { Box, Button, Card, CardContent, Chip, CircularProgress, Divider, List, ListItem, ListItemText, Typography, IconButton, Container, TextField, Avatar, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, CircularProgress, Divider, List, ListItem, ListItemText, Typography, IconButton, Container, TextField, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem, FormHelperText } from '@mui/material';
 import { Delete as DeleteIcon, Fingerprint as FingerprintIcon, AdminPanelSettings as AdminIcon, VpnKey as VpnKeyIcon, ContentCopy as CopyIcon } from '@mui/icons-material';
 import { useEffect, useState } from 'react';
 import * as Passwordless from '@passwordlessdev/passwordless-client';
@@ -53,7 +53,8 @@ export default function Profile() {
   const [pats, setPats] = useState<Pat[]>([]);
   const [patName, setPatName] = useState('');
   const [patScopes, setPatScopes] = useState('');
-  const [patExpiresInDays, setPatExpiresInDays] = useState('');
+  const [patExpirationPreset, setPatExpirationPreset] = useState<string>('30');
+  const [patCustomExpiresInDays, setPatCustomExpiresInDays] = useState<string>('');
   const [newPatRaw, setNewPatRaw] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -141,15 +142,23 @@ export default function Profile() {
 
   const handleCreatePat = async () => {
     try {
+      let expiresInDays: number | null = null;
+      if (patExpirationPreset === 'custom') {
+        expiresInDays = patCustomExpiresInDays ? parseInt(patCustomExpiresInDays, 10) : null;
+      } else if (patExpirationPreset !== 'never') {
+        expiresInDays = parseInt(patExpirationPreset, 10);
+      }
+
       const res = await api.post('/pat/create', {
         name: patName,
         scopes: patScopes,
-        expiresInDays: patExpiresInDays ? parseInt(patExpiresInDays) : null
+        expiresInDays
       });
       setNewPatRaw(res.data.rawToken);
       setPatName('');
       setPatScopes('');
-      setPatExpiresInDays('');
+      setPatExpirationPreset('30');
+      setPatCustomExpiresInDays('');
       fetchPats();
     } catch (err) {
       console.error('Failed to create PAT', err);
@@ -534,14 +543,40 @@ export default function Profile() {
                 value={patScopes}
                 onChange={e => setPatScopes(e.target.value)}
               />
-              <TextField
-                label="Expires in (Days - Optional)"
-                fullWidth
-                type="number"
-                placeholder="Never"
-                value={patExpiresInDays}
-                onChange={e => setPatExpiresInDays(e.target.value)}
-              />
+              <FormControl fullWidth>
+                <InputLabel id="pat-expiration-label">Expiration</InputLabel>
+                <Select
+                  labelId="pat-expiration-label"
+                  label="Expiration"
+                  value={patExpirationPreset}
+                  onChange={e => setPatExpirationPreset(e.target.value)}
+                >
+                  <MenuItem value="7">7 days</MenuItem>
+                  <MenuItem value="30">30 days</MenuItem>
+                  <MenuItem value="60">60 days</MenuItem>
+                  <MenuItem value="90">90 days</MenuItem>
+                  <MenuItem value="365">1 year</MenuItem>
+                  <MenuItem value="custom">Custom...</MenuItem>
+                  <MenuItem value="never">No expiration</MenuItem>
+                </Select>
+                {patExpirationPreset === 'never' && (
+                  <FormHelperText sx={{ color: 'warning.main' }}>
+                    Tokens with no expiration date pose a greater security risk.
+                  </FormHelperText>
+                )}
+              </FormControl>
+
+              {patExpirationPreset === 'custom' && (
+                <TextField
+                  label="Custom Duration (Days)"
+                  fullWidth
+                  type="number"
+                  placeholder="e.g. 45"
+                  value={patCustomExpiresInDays}
+                  onChange={e => setPatCustomExpiresInDays(e.target.value)}
+                  inputProps={{ min: 1 }}
+                />
+              )}
             </Box>
           )}
         </DialogContent>

@@ -14,6 +14,10 @@ export interface AuthConfig {
 let _userManager: UserManager | null = null;
 let _isPrototype = false;
 
+// User-Agent header identifying requests made by this SDK (kept in sync with package.json version).
+// Browsers forbid this header on fetch and silently drop it; it is honored when running in Node/RN.
+const SDK_USER_AGENT = 'ar-auth-js/1.3.0';
+
 export const initUserManager = (config: AuthConfig): UserManager => {
   if (_userManager) return _userManager;
 
@@ -107,6 +111,7 @@ export const refreshAccessToken = async (scope?: string): Promise<OidcUser | nul
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': SDK_USER_AGENT,
         },
         body: params,
       });

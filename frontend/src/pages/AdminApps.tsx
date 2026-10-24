@@ -44,7 +44,7 @@ export default function AdminApps() {
 
   const [manageScopesApp, setManageScopesApp] = useState<AppModel | null>(null);
   const [scopesDialogOpen, setScopesDialogOpen] = useState(false);
-  const [newScope, setNewScope] = useState({ name: '', description: '', isAdminApproved: false, isClientOnly: false, allowPat: true, maxAccessTokenLifetime: '' as string | number });
+  const [newScope, setNewScope] = useState({ name: '', description: '', isAdminApproved: false, isClientOnly: false, allowPat: false, maxAccessTokenLifetime: '' as string | number });
   const [addingScope, setAddingScope] = useState(false);
   const [appScopes, setAppScopes] = useState<{ id: string; name: string; fullScopeName: string; isAdminApproved: boolean; isClientOnly: boolean; allowPat?: boolean; maxAccessTokenLifetime?: number; description?: string }[]>([]);
 
@@ -277,7 +277,7 @@ export default function AdminApps() {
         allowPat: newScope.allowPat,
         maxAccessTokenLifetime: newScope.maxAccessTokenLifetime ? parseInt(newScope.maxAccessTokenLifetime.toString()) : null
       });
-      setNewScope({ name: '', description: '', isAdminApproved: false, isClientOnly: false, allowPat: true, maxAccessTokenLifetime: '' });
+      setNewScope({ name: '', description: '', isAdminApproved: false, isClientOnly: false, allowPat: false, maxAccessTokenLifetime: '' });
       // Refresh
       const res = await api.get(`/manage/scopes?client_id=${manageScopesApp.clientId}`);
       setAppScopes(res.data);

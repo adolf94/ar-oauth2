@@ -30,4 +30,13 @@ public interface IArAuthClient
     /// Requests an access token using the client_credentials grant (machine-to-machine).
     /// </summary>
     Task<TokenResponse> ClientCredentialsAsync(string? scope = null);
+
+    /// <summary>
+    /// Exchanges a Personal Access Token (PAT) for an access token.
+    /// </summary>
+    /// <param name="patToken">The raw Personal Access Token string.</param>
+    /// <param name="scope">The space-separated scopes to request (required).</param>
+    /// <param name="clientId">Optional client identifier if not configured in options.</param>
+    /// <returns>The TokenResponse containing the access token.</returns>
+    Task<TokenResponse> ExchangePatAsync(string patToken, string scope, string? clientId = null);
 }

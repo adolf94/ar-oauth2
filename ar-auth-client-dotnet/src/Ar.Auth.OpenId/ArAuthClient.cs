@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
 using Ar.Auth.OpenId.Exceptions;
@@ -30,6 +31,14 @@ public class ArAuthClient : IArAuthClient
         _options = options ?? new ArAuthOptions();
         _httpClient = httpClient ?? new HttpClient();
         _tokenHandler = new JwtSecurityTokenHandler();
+
+        // Identify requests made by this SDK to ar-auth endpoints (token + discovery metadata).
+        if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
+        {
+            var version = typeof(ArAuthClient).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "1.0.0";
+            _httpClient.DefaultRequestHeaders.UserAgent.TryParseAdd($"ar-auth-dotnet/{version}");
+        }
 
         var authority = _options.NormalizedAuthority;
         var metadataAddress = $"{authority}/.well-known/openid-configuration";
@@ -133,6 +142,26 @@ public class ArAuthClient : IArAuthClient
         };
 
         if (scope != null) parameters["scope"] = scope;
+
+        return await PostTokenRequestAsync(parameters);
+    }
+
+    /// <inheritdoc />
+    public async Task<TokenResponse> ExchangePatAsync(string patToken, string scope, string? clientId = null)
+    {
+        var targetClientId = clientId ?? _options.ClientId;
+        if (string.IsNullOrEmpty(targetClientId))
+        {
+            throw new ConfigurationException("ClientId is required for Personal Access Token exchange.");
+        }
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["grant_type"] = "personal_access_token",
+            ["client_id"] = targetClientId,
+            ["token"] = patToken,
+            ["scope"] = scope
+        };
 
         return await PostTokenRequestAsync(parameters);
     }

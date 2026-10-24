@@ -24,7 +24,7 @@ namespace backend.Services
                 .ToListAsync();
         }
 
-        public async Task<ApplicationScope> CreateScopeAsync(string clientId, string name, string? description, bool isAdminApproved = false, bool isClientOnly = false, bool allowPat = true, int? maxAccessTokenLifetime = null)
+        public async Task<ApplicationScope> CreateScopeAsync(string clientId, string name, string? description, bool isAdminApproved = false, bool isClientOnly = false, bool allowPat = false, int? maxAccessTokenLifetime = null)
         {
             var existing = await _dbContext.ApplicationScopes
                 .Where(s => s.ClientId == clientId && s.Name == name)
