@@ -95,7 +95,9 @@ class ArAuthClient:
             A jwt.PyJWKClient instance pointing to the JWKS endpoint.
         """
         if not self._jwks_client:
-            self._jwks_client = jwt.PyJWKClient(self.jwks_uri)
+            # PyJWKClient fetches JWKS via urllib and needs the User-Agent passed
+            # explicitly, otherwise it sends Python-urllib/... which Cloudflare may 403.
+            self._jwks_client = jwt.PyJWKClient(self.jwks_uri, headers={"User-Agent": USER_AGENT})
         return self._jwks_client
 
     def verify_token(self, token: str, audience: Optional[str] = None, leeway: int = 30) -> Dict[str, Any]:

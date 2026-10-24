@@ -37,6 +37,12 @@ export const initUserManager = (config: AuthConfig): UserManager => {
       ...(config.theme ? { theme: config.theme } : {}),
       ...(config.isPrototype ? { prototype: 'true' } : {}),
     },
+    // Identifies requests made by this SDK (oidc-client-ts handles metadata,
+    // token exchange and userinfo itself, outside our manual fetch calls).
+    // Browsers forbid User-Agent on fetch and silently drop it; Node honors it.
+    extraHeaders: {
+      'User-Agent': SDK_USER_AGENT,
+    },
   };
 
   _userManager = new UserManager(settings);

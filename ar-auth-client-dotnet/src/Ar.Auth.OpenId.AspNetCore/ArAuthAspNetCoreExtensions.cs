@@ -1,6 +1,8 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
@@ -37,6 +39,20 @@ public static class ArAuthAspNetCoreExtensions
 
         var authority = options.NormalizedAuthority;
         var metadataAddress = $"{authority}/.well-known/openid-configuration";
+
+        // Stamp the SDK User-Agent on the framework-managed JwtBearer backchannel,
+        // which fetches OIDC discovery and JWKS with no User-Agent by default.
+        // Registered after AddJwtBearer so it runs after the framework's post-configure.
+        services.PostConfigure<JwtBearerOptions>(jwtOptions =>
+        {
+            var backchannel = jwtOptions.Backchannel;
+            if (backchannel != null && backchannel.DefaultRequestHeaders.UserAgent.Count == 0)
+            {
+                var version = typeof(ArAuthClient).Assembly
+                    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "1.0.0";
+                backchannel.DefaultRequestHeaders.UserAgent.TryParseAdd($"ar-auth-dotnet/{version}");
+            }
+        });
 
         return services
             .AddAuthentication(authOptions =>
