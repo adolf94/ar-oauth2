@@ -3,7 +3,7 @@
     <Version>1.2.0</Version>
     <Authors>adolf94</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/adolf94/ar-auth</RepositoryUrl>
+    <RepositoryUrl>https://github.com/adolf94/ar-oauth2</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 </Project>
