@@ -14,7 +14,11 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.ApplicationInsights.Extensibility;
 
 var host = new HostBuilder()
-    .ConfigureFunctionsWebApplication()
+    .ConfigureFunctionsWebApplication(workerApplication =>
+    {
+        // Cache-Control for the OIDC .well-known documents (see middleware for TTL rationale)
+        workerApplication.UseMiddleware<backend.Middleware.WellKnownCacheMiddleware>();
+    })
     .ConfigureServices((builder, services) =>
     {
         var appConfig = new backend.Configuration.AppConfig();
