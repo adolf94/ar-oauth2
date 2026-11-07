@@ -1,6 +1,8 @@
 # Ar.Auth.OpenId
 
-A .NET 8 SDK for [Atlas Rig Auth](https://auth.adolfrey.com) (an OIDC/OAuth 2.0 provider), supporting token verification, code exchange, credentials grants, and framework integrations (ASP.NET Core and Azure Functions Isolated Worker).
+A .NET SDK for [Atlas Rig Auth](https://auth.adolfrey.com) (an OIDC/OAuth 2.0 provider), supporting token verification, code exchange, credentials grants, and framework integrations (ASP.NET Core and Azure Functions Isolated Worker).
+
+Packages target **.NET 8, 9, and 10** (LTS/STS/LTS).
 
 ## Packages
 

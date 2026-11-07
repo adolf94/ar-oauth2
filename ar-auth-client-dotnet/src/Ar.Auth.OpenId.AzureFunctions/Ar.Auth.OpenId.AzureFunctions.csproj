@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Ar.Auth.OpenId.AzureFunctions</PackageId>
-    <Version>1.1.0-local</Version>
+    <Version>1.2.0-local</Version>
     <Description>Azure Functions Isolated Worker middleware for Atlas Rig Auth token validation.</Description>
   </PropertyGroup>
 
