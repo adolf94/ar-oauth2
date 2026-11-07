@@ -9,7 +9,7 @@ from .exceptions import TokenValidationError, ConfigurationError
 try:
     _SDK_VERSION = importlib.metadata.version("ar-auth-python-client")
 except importlib.metadata.PackageNotFoundError:  # pragma: no cover
-    _SDK_VERSION = "0.4.0"
+    _SDK_VERSION = "0.5.0"
 
 # User-Agent header identifying requests made by this SDK.
 USER_AGENT = f"ar-auth-python/{_SDK_VERSION}"
@@ -183,7 +183,8 @@ class ArAuthClient:
             data["code_verifier"] = code_verifier
 
         try:
-            response = requests.post(self.token_endpoint, data=data, timeout=10)
+            headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT}
+            response = requests.post(self.token_endpoint, data=data, headers=headers, timeout=10)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -214,7 +215,8 @@ class ArAuthClient:
             data["scope"] = scope
 
         try:
-            response = requests.post(self.token_endpoint, data=data, timeout=10)
+            headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT}
+            response = requests.post(self.token_endpoint, data=data, headers=headers, timeout=10)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -244,7 +246,8 @@ class ArAuthClient:
             data["scope"] = scope
 
         try:
-            response = requests.post(self.token_endpoint, data=data, timeout=10)
+            headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT}
+            response = requests.post(self.token_endpoint, data=data, headers=headers, timeout=10)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -252,3 +255,40 @@ class ArAuthClient:
             if hasattr(e, 'response') and hasattr(e.response, 'text'):
                 error_msg = f"{error_msg} - Response: {e.response.text}"
             raise TokenValidationError(f"Client credentials request failed: {error_msg}") from e
+
+    def exchange_pat(self, pat_token: str, scope: str, client_id: Optional[str] = None) -> Dict[str, Any]:
+        """Exchanges a Personal Access Token (PAT) for an access token.
+
+        The granted scopes must be a subset of the PAT's configured scopes,
+        and the resulting token carries the PAT owner's identity.
+
+        Args:
+            pat_token: The raw personal access token string.
+            scope: The scopes to request. Required by ar-auth for this grant.
+            client_id: The client identifier to attribute the token to.
+                       Defaults to the client configured on this instance. Optional.
+
+        Returns:
+            The OIDC token endpoint response containing access_token, expires_in, scope.
+        """
+        target_client_id = client_id if client_id is not None else self.client_id
+        if not target_client_id:
+            raise ConfigurationError("client_id is required for Personal Access Token exchange")
+
+        data = {
+            "grant_type": "personal_access_token",
+            "client_id": target_client_id,
+            "token": pat_token,
+            "scope": scope,
+        }
+
+        try:
+            headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT}
+            response = requests.post(self.token_endpoint, data=data, headers=headers, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            error_msg = str(e)
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                error_msg = f"{error_msg} - Response: {e.response.text}"
+            raise TokenValidationError(f"PAT exchange failed: {error_msg}") from e

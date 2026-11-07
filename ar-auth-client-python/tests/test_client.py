@@ -6,6 +6,7 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from ar_auth import ArAuthClient
+from ar_auth.client import USER_AGENT
 from ar_auth.exceptions import TokenValidationError, ConfigurationError
 
 
@@ -191,6 +192,67 @@ class TestArAuthClient(unittest.TestCase):
             args, kwargs = mock_post.call_args
             self.assertEqual(kwargs["data"]["client_id"], "my-client-id")
             self.assertEqual(kwargs["data"]["client_secret"], "my-client-secret")
+
+    @patch("requests.post")
+    def test_exchange_pat(self, mock_post):
+        mock_config_response = MagicMock()
+        mock_config_response.json.return_value = self.mock_oidc_config
+        mock_config_response.status_code = 200
+
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = {
+            "access_token": "mock_pat_access_token",
+            "expires_in": 3600,
+            "scope": "products:read",
+        }
+        mock_post_response.status_code = 200
+        mock_post.return_value = mock_post_response
+
+        with patch("requests.get") as mock_get:
+            mock_get.return_value = mock_config_response
+            client = ArAuthClient(client_id="my-client-id")
+            res = client.exchange_pat(pat_token="arpat_test_token", scope="products:read")
+
+            self.assertEqual(res["access_token"], "mock_pat_access_token")
+            mock_post.assert_called_once()
+            args, kwargs = mock_post.call_args
+            self.assertEqual(kwargs["data"]["grant_type"], "personal_access_token")
+            self.assertEqual(kwargs["data"]["client_id"], "my-client-id")
+            self.assertEqual(kwargs["data"]["token"], "arpat_test_token")
+            self.assertEqual(kwargs["data"]["scope"], "products:read")
+            self.assertEqual(kwargs["headers"]["User-Agent"], USER_AGENT)
+
+    @patch("requests.post")
+    def test_exchange_pat_requires_client_id(self, mock_post):
+        with patch("requests.get") as mock_get:
+            mock_get.return_value = MagicMock(json=lambda: self.mock_oidc_config, status_code=200)
+            client = ArAuthClient()
+            with self.assertRaises(ConfigurationError):
+                client.exchange_pat(pat_token="arpat_test_token", scope="products:read")
+
+    @patch("requests.post")
+    def test_token_requests_include_user_agent(self, mock_post):
+        mock_config_response = MagicMock()
+        mock_config_response.json.return_value = self.mock_oidc_config
+        mock_config_response.status_code = 200
+
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = {"access_token": "mock_access_token"}
+        mock_post_response.status_code = 200
+        mock_post.return_value = mock_post_response
+
+        with patch("requests.get") as mock_get:
+            mock_get.return_value = mock_config_response
+            client = ArAuthClient(client_id="my-client-id", client_secret="my-client-secret")
+
+            client.exchange_code(code="auth_code", redirect_uri="http://localhost/callback")
+            client.refresh_token(refresh_token="mock_refresh_token")
+            client.client_credentials(scope="products:read")
+
+            self.assertEqual(mock_post.call_count, 3)
+            for call in mock_post.call_args_list:
+                _, kwargs = call
+                self.assertEqual(kwargs["headers"]["User-Agent"], USER_AGENT)
 
     def mock_jwks_url_response(self):
         return self.mock_jwks

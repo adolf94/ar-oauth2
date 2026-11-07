@@ -7,7 +7,7 @@ A lightweight and robust Python client SDK for `ar-auth` (an OIDC/OAuth 2.0 prov
 - **Dynamic JWKS Signature Verification**: Automatically retrieves, parses, and caches RSA signature verification keys using `RS256` algorithm.
 - **Robust Token Validation**: Validates OIDC claims (expiration, issuer, and signature verification).
 - **Default Authority**: Automatically defaults to `auth.adolfrey.com/api` and normalizes authority URLs.
-- **Multiple OAuth 2.0 / OIDC Grants**: Supports Authorization Code flow, Refresh Token grant, and Client Credentials (machine-to-machine) grant.
+- **Multiple OAuth 2.0 / OIDC Grants**: Supports Authorization Code flow, Refresh Token grant, Client Credentials (machine-to-machine) grant, and Personal Access Token (PAT) exchange.
 - **Native Web Framework Integrations**:
   - **FastAPI**: Clean dependency injection checking scopes and roles.
   - **Flask**: Easy-to-use routing decorator context checking.
@@ -104,6 +104,19 @@ new_access_token = refreshed_tokens["access_token"]
 ```python
 token_response = client.client_credentials(scope="products:read")
 client_access_token = token_response["access_token"]
+```
+
+### Personal Access Token (PAT) Exchange
+
+Exchange a personal access token created in the ar-auth dashboard for a short-lived access token.
+The requested scopes must be granted by the PAT, and the resulting token carries the PAT owner's identity:
+
+```python
+token_response = client.exchange_pat(
+    pat_token="arpat_your_personal_access_token",
+    scope="products:read",
+)
+access_token = token_response["access_token"]
 ```
 
 ---
