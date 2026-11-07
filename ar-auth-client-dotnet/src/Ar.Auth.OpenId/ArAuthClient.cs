@@ -43,10 +43,18 @@ public class ArAuthClient : IArAuthClient
         var authority = _options.NormalizedAuthority;
         var metadataAddress = $"{authority}/.well-known/openid-configuration";
 
+        var configRetriever = new HttpDocumentRetriever(_httpClient)
+        {
+            // http:// authorities are legitimate for local mock IdPs; https
+            // everywhere else (same rule as the JwtBearer backchannel).
+            // NOTE: property is `RequireHttps` on IdentityModel.Protocols 8.x
+            // (the IDX20108 text misleadingly calls it RequireHttpsMetadata).
+            RequireHttps = !authority.StartsWith("http://"),
+        };
         _configManager = new ConfigurationManager<OpenIdConnectConfiguration>(
             metadataAddress,
             new OpenIdConnectConfigurationRetriever(),
-            new HttpDocumentRetriever(_httpClient));
+            configRetriever);
     }
 
     /// <inheritdoc />
