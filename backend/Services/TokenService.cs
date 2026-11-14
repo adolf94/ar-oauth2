@@ -32,7 +32,7 @@ namespace backend.Services
 
         // ── Access Token ────────────────────────────────────────────
 
-        public async Task<(string Token, string Scopes)> GenerateAccessToken(User user, Client client, string scopes, string? sid = null,  int lifetimeSeconds = 300)
+        public async Task<(string Token, string Scopes)> GenerateAccessToken(User user, Client client, string scopes, string? sid = null,  int lifetimeSeconds = 3600)
         {
             var key = _rsaKeyService.GetSigningKey();
 

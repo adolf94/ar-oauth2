@@ -254,7 +254,7 @@ namespace backend.Endpoints
                 {
                     AccessToken  = accessToken,
                     IdToken      = idToken,
-                    ExpiresIn    = 300,
+                    ExpiresIn    = 3600, // at least 1 hour
                     RefreshToken = refreshToken,
                     TokenType    = "Bearer",
                     Scope        = grantedScopes
@@ -342,7 +342,7 @@ namespace backend.Endpoints
                 {
                     AccessToken  = newAccessToken,
                     IdToken      = idToken,
-                    ExpiresIn    = 300,
+                    ExpiresIn    = 3600, // at least 1 hour
                     RefreshToken = newRefreshToken,
                     TokenType    = "Bearer",
                     Scope        = grantedScopes
