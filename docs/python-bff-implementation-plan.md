@@ -117,31 +117,51 @@ the exact analog of the .NET resource-server work, all opt-in, default off.
 - [ ] **T1.4 — Tests**: validation matrix (wrong `aud`/`type`, expired, bad signature),
       precedence, origin rejection, per-framework wiring.
 
-## Stage 2 — BFF routes: login / callback / logout (L)
+## Stage 2 — BFF routes: login / callback / logout (L) — ✅ DONE
 
-The OIDC core. Build on AuthLib machinery — do not hand-roll correlation logic.
+The OIDC core. Built on AuthLib machinery — correlation logic is not hand-rolled.
 
-- [ ] **T2.1 — `BffOptions` + `BffPathResolver` port**: `login_path`/`callback_path`/
-      `logout_path` (defaults `/auth/login`, `/auth/callback`, `/auth/logout`),
-      `public_base_url`, `cookie_path`, `cookie_name_prefix`, `session_expiry` (8h),
-      `csrf` mode, `secret`. Resolver precedence: `public_base_url` → Starlette
-      `root_path` (the `UsePathBase` analog) → `X-Forwarded-Prefix` → bare host; produces
-      the `redirect_uri` (must match client registration exactly), browser cookie path,
-      and cookie-name prefix. Fail-fast validation (bad paths, non-positive expiry,
-      malformed `public_base_url`).
-- [ ] **T2.2 — `ArAuthBff` class + `add_ar_auth_bff(app, ...)`**: intercepts login →
-      validated local `return_url` + state/PKCE via AuthLib + short-TTL single-use
-      correlation cookie (prefix + path per T0.2 rule) → 302 to `/authorize`.
-- [ ] **T2.3 — Callback**: state validation, code+PKCE exchange, `id_token` validated
-      via the existing PyJWT path, **claims-only session ticket** issued (HttpOnly,
-      SameSite=Lax, path-scoped, Secure-on-https), 302 to the return URL. Consumed code
-      / `invalid_grant` → graceful redirect to login, never a 500.
-- [ ] **T2.4 — Logout**: clears all app-local cookies (session, parked refresh, XSRF),
-      302 to return URL.
-- [ ] **T2.5 — Warmup**: FastAPI startup event fetches discovery + JWKS via a
-      per-app-lifetime `httpx.AsyncClient` (mirror of `BffOidcWarmup`).
-- [ ] **T2.6 — Tests**: full round-trip against the stub, `return_url` validation
-      matrix, consumed-code idempotency, path/prefix matrix, cookie attributes.
+- [x] **T2.1 — `BffOptions` + path resolution** (`src/ar_auth/bff.py`): all §3.8 values
+      — `login_path`/`callback_path`/`logout_path` (defaults `/auth/login`, `/auth/callback`,
+      `/auth/logout`), `public_base_url`, `cookie_path`, `cookie_name_prefix`,
+      `session_expiry` (8h), `correlation_ttl` (10 min), `csrf` mode, `secret`,
+      `secure_cookies`. Cookie scoping is options-static (explicit → public path → "/"),
+      mirroring the .NET rule; `redirect_uri` is per-request
+      (public_base_url → `root_path` → `X-Forwarded-Prefix` → bare host). Fail-fast
+      validation in `__post_init__` via `ConfigurationError`.
+- [x] **T2.2 — `ArAuthBff` + `add_ar_auth_bff(app, options)`**: login validates the
+      local-only `returnUrl`, stores it in the correlation session, and delegates to
+      AuthLib's `authorize_redirect` (state + nonce + PKCE S256 are library-owned).
+      The correlation cookie is a **scoped `SessionMiddleware` instance** —
+      itsdangerous-signed with the derived "state" key, prefixed name, path-scoped,
+      `Max-Age=600`, HttpOnly + Lax; Starlette deletes it automatically once the
+      callback clears the state (empty modified session).
+- [x] **T2.3 — Callback**: AuthLib's `authorize_access_token` validates state, exchanges
+      code+PKCE, and fully validates the `id_token` (signature via JWKS with kid-refetch,
+      `iss` from discovery, `aud` = client_id, `exp`, `nonce`; `at_hash` only when
+      present). A claims-only session ticket is issued (HttpOnly, Lax, path-scoped,
+      `Secure` from the configured scheme). Consumed code / state mismatch /
+      provider error → graceful redirect to login — never a 500 (verified by test).
+- [x] **T2.4 — Logout**: clears the session cookie (path-scoped), validates `returnUrl`.
+- [x] **T2.5 — Warmup**: discovery + JWKS prefetched at startup. This Starlette (1.9)
+      dropped `add_event_handler`, so warmup chains onto the app's lifespan via
+      `router.lifespan_context` composition — the app's own lifespan is preserved and
+      an unreachable authority fails startup (fail-fast, mirroring `BffOidcWarmup`).
+- [x] **T2.6 — Tests** (`tests/test_stage2_bff.py`, 17 tests; app-under-test
+      `tests/bff_app.py` runs on a real uvicorn loopback port like the .NET
+      `BffTestApp` on Kestrel): full round-trip, PKCE/state/redirect_uri authorize
+      shape, cookie attributes, open-redirect matrix, consumed-code replay,
+      forged-state callback, logout, `public_base_url` scoping/prefix, warmup.
+      Suite: 47/47 green.
+
+**Findings:** (1) `MismatchingStateError` (replayed callback) is an `OAuthError`
+subclass; the invalid_grant token response surfaces as authlib `OAuth2Error` — the
+callback catches both. (2) A replayed callback never re-issues a session but the
+user's existing one persists — expected. (3) `Secure` is config-derived
+(scheme of `public_base_url`/authority), not per-request `SameAsRequest` like .NET —
+documented tradeoff (TLS-terminating proxies should set `secure_cookies=True`).
+(4) API sharp edge: options validate in `__post_init__`; post-construction mutation
+does not revalidate — construct with final values.
 
 ## Stage 3 — Parked refresh + single-flight renewal (M)
 
