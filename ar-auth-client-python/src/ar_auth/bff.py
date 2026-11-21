@@ -15,10 +15,11 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import inspect
 import secrets
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, Optional
@@ -37,7 +38,18 @@ from starlette.responses import RedirectResponse, Response
 
 from .exceptions import ConfigurationError
 
-__all__ = ["BffCsrfMode", "BffOptions", "BffRenewOutcome", "ArAuthBff", "add_ar_auth_bff"]
+__all__ = [
+    "BffCsrfMode",
+    "BffOptions",
+    "BffEvents",
+    "BffRedirectContext",
+    "BffAuthenticatedContext",
+    "BffLogoutContext",
+    "BffRenewalContext",
+    "BffRenewOutcome",
+    "ArAuthBff",
+    "add_ar_auth_bff",
+]
 
 SESSION_COOKIE_SUFFIX = "ar_bff_session"
 STATE_COOKIE_SUFFIX = "ar_bff_state"  # correlation, session-backed via SessionMiddleware
@@ -101,6 +113,7 @@ class BffOptions:
     csrf: BffCsrfMode = BffCsrfMode.SIGNED_DOUBLE_SUBMIT
     scope: str = "openid profile"
     secure_cookies: Optional[bool] = None
+    events: Optional["BffEvents"] = None
 
     def __post_init__(self) -> None:
         if not self.client_id:
@@ -299,10 +312,112 @@ class _CsrfTokenService:
         return hmac.compare_digest(signature, expected)
 
 
+async def _run_hook(delegate: Optional[Callable[..., Any]], context: Any) -> None:
+    """Fires a BffEvents delegate — sync and async callbacks both supported."""
+    if delegate is None:
+        return
+    result = delegate(context)
+    if inspect.isawaitable(result):
+        await result
+
+
+class BffRedirectContext:
+    """Context for redirect hooks: login start (may add authorize parameters) and
+    the final post-login redirect."""
+
+    def __init__(self, request: Request, return_url: Optional[str] = None) -> None:
+        self.request = request
+        # Local return URL the user lands on after the flow completes. The login
+        # hook may adjust it (base re-sanitizes); the post-login redirecting hook
+        # owns it end-to-end (its result is used verbatim).
+        self.return_url = return_url
+        # Extra query parameters appended to the /authorize redirect.
+        # Only honored by the login-redirect hook.
+        self.extra_params: Dict[str, str] = {}
+
+
+class BffAuthenticatedContext:
+    """The code was exchanged and validated, and the session is about to be
+    issued. Enrich the claims, adjust the return URL, or :meth:`reject` to abort
+    the login without issuing any cookie."""
+
+    def __init__(self, request: Request, claims: Dict[str, Any], return_url: Optional[str]) -> None:
+        self.request = request
+        # Claims built from the validated id_token. Replace or enrich freely
+        # (e.g. claims from a local database) — this is what gets signed into
+        # the session cookie.
+        self.claims = claims
+        # Local return URL, validated root-relative. May be adjusted (base
+        # re-sanitizes whatever the hook leaves here).
+        self.return_url = return_url
+        self._rejected = False
+        self.reject_reason: Optional[str] = None
+
+    @property
+    def rejected(self) -> bool:
+        """True after :meth:`reject` was called — no session will be issued."""
+        return self._rejected
+
+    def reject(self, reason: str = "") -> None:
+        """Aborts the login: no session or refresh cookie is written; the user
+        is redirected to the login path."""
+        self._rejected = True
+        self.reject_reason = reason or None
+
+
+class BffLogoutContext:
+    """Context for the logout hook: local cookies are cleaned by base regardless."""
+
+    def __init__(
+        self,
+        request: Request,
+        claims: Optional[Dict[str, Any]],
+        return_url: Optional[str],
+    ) -> None:
+        self.request = request
+        # Validated claims of the current session, if one was present; None otherwise.
+        self.claims = claims
+        # Local return URL, validated root-relative. May be adjusted (base
+        # re-sanitizes whatever the hook leaves here).
+        self.return_url = return_url
+
+
+@dataclass
+class BffRenewalContext:
+    """Context for the silent-renewal hook: cookies were re-issued from the
+    parked refresh token."""
+
+    request: Request
+    # Claims of the freshly re-issued session — enrichment propagates into the
+    # fresh session cookie.
+    claims: Dict[str, Any]
+
+
+@dataclass
+class BffEvents:
+    """Delegate-style wiring for the five BFF hooks (the no-subclass alternative
+    to overriding :class:`ArAuthBff`). Sync and async callables both work; see
+    :class:`ArAuthBff` for the composition rules."""
+
+    on_login_redirecting: Optional[Callable[[BffRedirectContext], Any]] = field(default=None)
+    on_authenticated: Optional[Callable[[BffAuthenticatedContext], Any]] = None
+    on_redirecting: Optional[Callable[[BffRedirectContext], Any]] = None
+    on_logout: Optional[Callable[[BffLogoutContext], Any]] = None
+    on_renewed: Optional[Callable[[BffRenewalContext], Any]] = None
+
+
 class ArAuthBff:
     """The BFF endpoints and session machinery. Security-critical work (state,
-    PKCE, id_token validation) is owned by AuthLib + this class; Stage 5 adds
-    hooks around it."""
+    PKCE, correlation, cookie issuance, CSRF checks) lives in this class and the
+    pipeline components and ALWAYS runs — overriding a hook cannot skip it.
+
+    Five hook points (§3.9) run around the pipeline built in Stages 2–4:
+    subclass and pass an instance to :func:`add_ar_auth_bff` for typed,
+    constructor-injected hooks, or set the matching :class:`BffEvents` delegate
+    for the no-class alternative. Both surfaces run at the same points and
+    compose: calling ``super()`` in an override fires the delegate of the same
+    name; NOT calling it merely opts out of that delegate.
+    """
 
     def __init__(self, options: BffOptions):
         self.options = options
@@ -365,11 +480,21 @@ class ArAuthBff:
     async def login(self, request: Request) -> Response:
         """GET login_path?returnUrl=/local/path -> 302 to the authorize endpoint."""
         return_url = self._validate_return_url(request.query_params.get("returnUrl"))
+
+        # Login hook: extra authorize parameters + return-URL adjustment
+        # (re-sanitized below — hook output never bypasses the open-redirect guard).
+        context = BffRedirectContext(request=request, return_url=return_url)
+        await self.on_login_redirecting(context)
+        return_url = self._validate_return_url(context.return_url)
+
         request.session[RETURN_URL_SESSION_KEY] = return_url
         # AuthLib generates state + nonce + PKCE and stores them in the (scoped,
         # short-TTL, signed) session cookie.
         return await self._client.authorize_redirect(
-            request, self._redirect_uri(request), scope=self.options.scope
+            request,
+            self._redirect_uri(request),
+            scope=self.options.scope,
+            **context.extra_params,
         )
 
     async def callback(self, request: Request) -> Response:
@@ -387,11 +512,28 @@ class ArAuthBff:
         if not userinfo:
             return RedirectResponse(self.options.login_path, status_code=302)
 
-        # Claims only: the session cookie never holds access/refresh/ID tokens.
-        claims: Dict[str, Any] = dict(userinfo)
         return_url = request.session.pop(RETURN_URL_SESSION_KEY, "/")
 
-        response = RedirectResponse(return_url, status_code=302)
+        # Authenticated hook: enrich/replace the claims (this is what gets signed
+        # into the session cookie), adjust the return URL (re-sanitized below),
+        # or reject() to abort without issuing any cookie.
+        auth_context = BffAuthenticatedContext(request, dict(userinfo), return_url)
+        await self.on_authenticated(auth_context)
+        if auth_context.rejected:
+            # No session, no parked refresh, no XSRF — restart the login flow
+            # gracefully (mirrors the .NET Reject() path).
+            return RedirectResponse(self.options.login_path, status_code=302)
+
+        # Claims only: the session cookie never holds access/refresh/ID tokens.
+        claims: Dict[str, Any] = auth_context.claims
+        return_url = self._validate_return_url(auth_context.return_url)
+
+        # Last hook of the login flow: the hook owns the landing URL end-to-end —
+        # its result is used verbatim (the .NET Stage-5 ReturnUri trap, ported).
+        redirect_context = BffRedirectContext(request=request, return_url=return_url)
+        await self.on_redirecting(redirect_context)
+
+        response = RedirectResponse(redirect_context.return_url or "/", status_code=302)
         self._set_session_cookie(response, claims)
         refresh_token = token.get("refresh_token")
         if refresh_token:
@@ -409,13 +551,61 @@ class ArAuthBff:
         return response
 
     async def logout(self, request: Request) -> Response:
-        """GET logout_path?returnUrl=/local/path -> clears the app-local cookie."""
+        """GET logout_path?returnUrl=/local/path -> clears the app-local cookies."""
         return_url = self._validate_return_url(request.query_params.get("returnUrl"))
+
+        # Logout hook: base clears the cookies and redirects regardless (the hook
+        # observes / extends, e.g. audit). Return-URL adjustments re-sanitized.
+        context = BffLogoutContext(request, self._authenticate_cookie(request), return_url)
+        await self.on_logout(context)
+        return_url = self._validate_return_url(context.return_url)
+
         response = RedirectResponse(return_url, status_code=302)
         response.delete_cookie(self.session_cookie_name, path=self.options.cookie_path)
         self._refresh_store.delete(response)  # the parked refresh goes too
         response.delete_cookie(self.xsrf_cookie_name, path=self.options.cookie_path)
         return response
+
+    # ── extensibility hooks (§3.9) ────────────────────────────────────────────
+    # Security-critical work lives in the pipeline components and ALWAYS runs;
+    # overriding a hook cannot skip it — NOT calling super() merely opts out of
+    # the BffEvents delegate of the same name.
+
+    async def on_login_redirecting(self, context: BffRedirectContext) -> None:
+        """Before the 302 to the auth server's /authorize. May add extra
+        authorize parameters (``context.extra_params``) or adjust the return URL
+        (base re-sanitizes it). Base fires ``BffEvents.on_login_redirecting``."""
+        if self.options.events:
+            await _run_hook(self.options.events.on_login_redirecting, context)
+
+    async def on_authenticated(self, context: BffAuthenticatedContext) -> None:
+        """Code exchanged and id_token validated, before the session is issued.
+        May enrich/replace ``context.claims``, adjust the return URL, or
+        ``context.reject()`` to abort without issuing any cookie. Base fires
+        ``BffEvents.on_authenticated``."""
+        if self.options.events:
+            await _run_hook(self.options.events.on_authenticated, context)
+
+    async def on_redirecting(self, context: BffRedirectContext) -> None:
+        """Last hook of the login flow: refresh + XSRF cookies are about to be
+        written and the user redirected. The hook owns the landing URL
+        end-to-end — ``context.return_url`` is used verbatim. Base fires
+        ``BffEvents.on_redirecting``."""
+        if self.options.events:
+            await _run_hook(self.options.events.on_redirecting, context)
+
+    async def on_logout(self, context: BffLogoutContext) -> None:
+        """Logout: the base pipeline (always runs, overridden or not) clears the
+        session and companion cookies and redirects; the hook observes / extends
+        (e.g. audit). Base fires ``BffEvents.on_logout``."""
+        if self.options.events:
+            await _run_hook(self.options.events.on_logout, context)
+
+    async def on_renewed(self, context: BffRenewalContext) -> None:
+        """After silent renewal succeeded and the session/parked/XSRF cookies
+        were re-issued (§3.5). Base fires ``BffEvents.on_renewed``."""
+        if self.options.events:
+            await _run_hook(self.options.events.on_renewed, context)
 
     # ── session ticket ────────────────────────────────────────────────────────
 
@@ -485,13 +675,19 @@ class ArAuthBff:
                 and latest.refresh_token != parked
                 and time.monotonic() - latest.renewed_at <= self.options.reuse_window_seconds
             ):
-                return RenewalResult(BffRenewOutcome.RENEWED, latest.claims, latest.refresh_token)
+                result = RenewalResult(BffRenewOutcome.RENEWED, latest.claims, latest.refresh_token)
+            else:
+                result = await self._refresh(parked)
+                if result.outcome is BffRenewOutcome.RENEWED:
+                    chain.latest = _RenewedSession(
+                        result.claims or {}, result.refresh_token or "", time.monotonic()
+                    )
 
-            result = await self._refresh(parked)
             if result.outcome is BffRenewOutcome.RENEWED:
-                chain.latest = _RenewedSession(
-                    result.claims or {}, result.refresh_token or "", time.monotonic()
-                )
+                # Renewal hook: everything is re-issued on the response; claim
+                # enrichment propagates into the fresh session cookie. Fires on
+                # both the leader and reuse paths (mirrors the .NET IssueAsync).
+                await self.on_renewed(BffRenewalContext(request, result.claims or {}))
             return result
 
     async def _refresh(self, parked: str) -> RenewalResult:
@@ -652,13 +848,21 @@ class _BffRenewalMiddleware:
         return self.bff._csrf.validate(header, cookie_value)
 
 
-def add_ar_auth_bff(app: Any, options: BffOptions) -> ArAuthBff:
+def add_ar_auth_bff(
+    app: Any,
+    options: BffOptions,
+    bff: Optional[ArAuthBff] = None,
+) -> ArAuthBff:
     """Registers the BFF routes, the scoped correlation session, and the startup
     warmup on a FastAPI app. Call at construction time (before the app starts).
 
-    Returns the :class:`ArAuthBff` instance (Stage 5 hooks live on it).
+    Pass ``bff`` to use an :class:`ArAuthBff` **subclass** (plain constructor
+    injection) instead of the default instance.
+
+    Returns the :class:`ArAuthBff` instance (the Stage 5 hooks live on it).
     """
-    bff = ArAuthBff(options)
+    if bff is None:
+        bff = ArAuthBff(options)
 
     # Correlation cookie: AuthLib stores state/nonce/PKCE verifier in the Starlette
     # session; we own that cookie — itsdangerous-signed with a derived key, scoped

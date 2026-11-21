@@ -235,17 +235,36 @@ pair — a stale SPA POST still triggers renewal (authenticated in place) but fa
 double-submit check → 403; the SPA re-probes with a GET, picks up the fresh pair issued
 alongside the renewed session, and retries. Same story as .NET; the test documents it.
 
-## Stage 5 — Extensibility surface (M)
+## Stage 5 — Extensibility surface (M) — ✅ DONE
 
-- [ ] **T5.1 — Hooks** mirroring the five .NET virtuals as overridable methods on
-      `ArAuthBff`: `on_login_redirecting` (extra authorize parameters),
-      `on_authenticated` (enrich claims or `reject()`), `on_redirecting` (final
-      post-login landing rewrite — port the .NET `ReturnUri` trap: the hook owns the
-      redirect target end-to-end), `on_logout`, `on_renewed`. Callback-style wiring
-      (kwargs) for non-subclass users. Same Stage-5 interpretation as .NET: base
-      implementations own every security-critical step; overriding cannot skip them —
-      not calling `super()` only opts out of the callback of the same name.
-- [ ] **T5.2 — Tests**: subclass + callback variants, `reject()` path, landing rewrite.
+- [x] **T5.1 — Hooks** mirroring the five .NET virtuals as overridable ``async``
+      methods on `ArAuthBff` (each base implementation fires the matching
+      `BffEvents` delegate; sync **and** async delegates both work via
+      `inspect.isawaitable`):
+      `on_login_redirecting` (extra authorize params via `context.extra_params`;
+      return-URL adjustment — **re-sanitized** by base),
+      `on_authenticated` (enrich/replace `claims` — what gets signed into the
+      session cookie; return-URL adjustment — re-sanitized; `reject()` aborts with
+      a graceful login-path redirect, **no session/parked/XSRF cookies written**),
+      `on_redirecting` (the .NET `ReturnUri` trap ported: the hook owns the landing
+      URL end-to-end, its result used **verbatim**),
+      `on_logout` (observes the valid-session claims + return URL; base clears
+      cookies and redirects regardless),
+      `on_renewed` (fired on **both** the leader and reuse paths, mirroring the
+      .NET `IssueAsync`; claim enrichment propagates into the fresh cookie).
+      Contexts `BffRedirectContext` / `BffAuthenticatedContext` / `BffLogoutContext`
+      / `BffRenewalContext`; delegates on `BffEvents` (set via `BffOptions.events`).
+      Subclass registration: `add_ar_auth_bff(app, options, bff=MyBff(options))` —
+      plain constructor injection, no DI container needed. Same Stage-5
+      interpretation as .NET, stated on the class: security-critical work lives in
+      the pipeline components and ALWAYS runs; overriding a hook cannot skip it —
+      not calling `super()` only opts out of the delegate of the same name.
+- [x] **T5.2 — Tests** (`tests/test_stage5_bff.py`, 10 tests): extra authorize
+      params, login-hook URL re-sanitization, claims enrichment, reject-aborts
+      (no cookies issued), authenticated-hook URL re-sanitization, verbatim landing
+      rewrite, logout audit, renewal hook fires + enrichment propagates,
+      subclass-with-super composition, subclass-without-super opts out.
+      Suite: 79/79 green.
 
 ## Stage 6 — Precedence composition (S)
 

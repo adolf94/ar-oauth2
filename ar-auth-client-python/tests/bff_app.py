@@ -41,6 +41,7 @@ class BffTestServer:
         bff_kwargs: Optional[dict] = None,
         configure_bff: Optional[Callable[[BffOptions], None]] = None,
         configure_app: Optional[Callable[[FastAPI], None]] = None,
+        bff_factory: Optional[Callable[[BffOptions], "Any"]] = None,
     ):
         self.stub = stub
         kwargs = dict(
@@ -56,7 +57,9 @@ class BffTestServer:
         self.options = options
 
         app = FastAPI()
-        self.bff = add_ar_auth_bff(app, options)
+        self.bff = add_ar_auth_bff(
+            app, options, bff=bff_factory(options) if bff_factory else None
+        )
 
         @app.get("/me")
         async def me(request: Request) -> Any:
