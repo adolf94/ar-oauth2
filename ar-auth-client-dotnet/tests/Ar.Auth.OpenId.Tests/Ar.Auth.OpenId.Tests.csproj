@@ -22,6 +22,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ar.Auth.OpenId\Ar.Auth.OpenId.csproj" />
+    <ProjectReference Include="..\..\src\Ar.Auth.OpenId.AspNetCore\Ar.Auth.OpenId.AspNetCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>

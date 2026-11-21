@@ -101,6 +101,20 @@ public class ArAuthClient : IArAuthClient
     }
 
     /// <inheritdoc />
+    public async Task<ClaimsPrincipal> ValidateSessionTokenAsync(string sessionToken)
+    {
+        // Session JWTs are issued with audience = issuer (the authority) and type=session.
+        var principal = await VerifyTokenAsync(sessionToken, _options.NormalizedAuthority);
+
+        if (principal.FindFirst("type")?.Value != "session")
+        {
+            throw new TokenValidationException("Token is not an ar-auth session token.");
+        }
+
+        return principal;
+    }
+
+    /// <inheritdoc />
     public async Task<TokenResponse> ExchangeCodeAsync(string code, string redirectUri, string? codeVerifier = null)
     {
         var parameters = new Dictionary<string, string>

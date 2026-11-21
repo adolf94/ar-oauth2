@@ -55,4 +55,21 @@ public class ArAuthOptions
 
     /// <summary>A list of function names that should bypass authentication. Optional.</summary>
     public string[]? ExcludedFunctions { get; set; }
+
+    /// <summary>
+    /// Accepts the auth server's session cookie (<see cref="CookieName"/>) as a fallback
+    /// credential when no Authorization header is present. Only useful when the API shares
+    /// a registrable domain (site) with the auth server — browsers never send the auth
+    /// server's cookie to an API on a different domain. Optional; default false.
+    /// </summary>
+    public bool AllowSessionCookie { get; set; }
+
+    /// <summary>Name of the ar-auth session cookie. Defaults to "ar_auth_session".</summary>
+    public string CookieName { get; set; } = "ar_auth_session";
+
+    /// <summary>
+    /// Additional origins (scheme://host[:port]) allowed to authenticate via the session
+    /// cookie on non-GET/HEAD requests. Same-origin requests are always allowed. Optional.
+    /// </summary>
+    public string[]? AllowedCookieOrigins { get; set; }
 }

@@ -17,6 +17,16 @@ public interface IArAuthClient
     Task<ClaimsPrincipal> VerifyTokenAsync(string token, string? audience = null);
 
     /// <summary>
+    /// Validates an ar-auth session JWT (type=session, audience = the authority).
+    /// This is the token carried by the auth server's ar_auth_session cookie, and is the
+    /// validation step for session-cookie authentication on same-site resource servers.
+    /// </summary>
+    /// <param name="sessionToken">The raw session JWT string (the cookie value).</param>
+    /// <returns>The validated ClaimsPrincipal (sub, email, name claims; no roles or scopes).</returns>
+    /// <exception cref="Exceptions.TokenValidationException">Invalid, expired, or not a session token.</exception>
+    Task<ClaimsPrincipal> ValidateSessionTokenAsync(string sessionToken);
+
+    /// <summary>
     /// Exchanges an authorization code for tokens.
     /// </summary>
     Task<TokenResponse> ExchangeCodeAsync(string code, string redirectUri, string? codeVerifier = null);

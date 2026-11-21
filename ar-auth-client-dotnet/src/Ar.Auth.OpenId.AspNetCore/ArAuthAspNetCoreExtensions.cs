@@ -54,12 +54,39 @@ public static class ArAuthAspNetCoreExtensions
             }
         });
 
-        return services
+        var authBuilder = services
             .AddAuthentication(authOptions =>
             {
-                authOptions.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                authOptions.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
+                if (options.AllowSessionCookie)
+                {
+                    // Policy scheme picks the credential per request: an explicit Bearer
+                    // header always wins; otherwise the session cookie handler (which is a
+                    // no-op when disabled or when no cookie is present). 401 challenges
+                    // still advertise Bearer.
+                    authOptions.DefaultScheme = ArAuthPolicyScheme.SchemeName;
+                    authOptions.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                }
+                else
+                {
+                    authOptions.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                    authOptions.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                }
+            });
+
+        if (options.AllowSessionCookie)
+        {
+            authBuilder
+                .AddPolicyScheme(ArAuthPolicyScheme.SchemeName, "ArAuth (Bearer or session cookie)", policyOptions =>
+                {
+                    policyOptions.ForwardDefaultSelector = ctx =>
+                        ctx.Request.Headers.ContainsKey("Authorization")
+                            ? JwtBearerDefaults.AuthenticationScheme
+                            : ArAuthSessionHandler.SchemeName;
+                })
+                .AddScheme<AuthenticationSchemeOptions, ArAuthSessionHandler>(ArAuthSessionHandler.SchemeName, _ => { });
+        }
+
+        return authBuilder
             .AddJwtBearer(jwtOptions =>
             {
                 jwtOptions.Authority = authority;
