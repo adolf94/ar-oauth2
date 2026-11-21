@@ -163,22 +163,45 @@ documented tradeoff (TLS-terminating proxies should set `secure_cookies=True`).
 (4) API sharp edge: options validate in `__post_init__`; post-construction mutation
 does not revalidate — construct with final values.
 
-## Stage 3 — Parked refresh + single-flight renewal (M)
+## Stage 3 — Parked refresh + single-flight renewal (M) — ✅ DONE
 
-- [ ] **T3.1 — `RefreshStore`**: Fernet-encrypted parked-refresh cookie (HttpOnly, Lax,
-      path-scoped, prefixed name); key from the configured secret.
-- [ ] **T3.2 — Token stripping**: the session ticket carries validated claims only —
-      access/refresh/ID tokens never enter any readable or session cookie.
-- [ ] **T3.3 — `SessionRenewer`**: single-flight `asyncio` locks keyed by
-      SHA-256(refresh token), 2-min waiter window; makes its own `/token` call via warm
-      discovery to distinguish definitive 400/401 (burn the parked cookie) from transient
-      failure (keep it); rebuilds claims from the fully validated refreshed `id_token`
-      (nonce deliberately skipped on renewal); reissues both cookies.
-- [ ] **T3.4 — Renewal trigger**: any anonymous request with a parked cookie present and
-      no Bearer header (mirrors the .NET middleware placement).
-- [ ] **T3.5 — Tests**: expiry → silent renewal round-trip; concurrent single-flight
-      (exactly one stub `/token` call); rotation burn-on-reuse; definitive vs transient;
-      claims rebuild.
+- [x] **T3.1 — `_RefreshStore`**: Fernet-encrypted parked cookie (`{prefix}ar_bff_refresh`,
+      HttpOnly, Lax, path-scoped, 30-day TTL via `refresh_cookie_ttl` — not
+      session-aligned), key derived from the secret (`|ar-bff|refresh` label). Garbage
+      values read as absent.
+- [x] **T3.2 — Token stripping**: the session ticket is claims-only (verified by test —
+      the ticket payload is decoded and asserted free of access/refresh/ID tokens); the
+      callback parks the refresh token and drops access/ID tokens outright; logout clears
+      both cookies.
+- [x] **T3.3 — `SessionRenewer`** (methods on `ArAuthBff`): single-flight per-chain
+      `asyncio.Lock` keyed by SHA-256(refresh token) + a 2-minute `renewal_reuse_window`
+      (now a `BffOptions` field — see findings). Own `/token` call via warm discovery
+      (`httpx`): 400/401 → `REJECTED` (burn the parked cookie), other failures/parse →
+      `UNAVAILABLE` (keep it). Claims rebuilt from the refreshed id_token via AuthLib
+      `parse_id_token(nonce=None)` — nonce skipped on renewal by design; signature, iss,
+      aud, exp still enforced.
+- [x] **T3.4 — Renewal trigger**: pure-ASGI `_BffRenewalMiddleware` (outermost) —
+      anonymous request + parked cookie + no `Authorization` header, BFF routes exempt,
+      valid sessions skip. RENEWED claims ride the request scope (authenticated in
+      place); its Set-Cookie headers are appended to ANY response kind, not just
+      redirects (mirrors the .NET middleware).
+- [x] **T3.5 — Tests** (`tests/test_stage3_bff.py`, 10 tests): parking attributes +
+      opaque value, claims-only ticket, logout clears both, expiry → silent renewal
+      (count == 1, both cookies re-issued, rotated), concurrent single-flight (5 parallel
+      tabs → exactly one `/token` call), Bearer exemption, revoked → burn, replayed
+      consumed token (both window semantics), transient (stopped stub) → cookie kept.
+      Suite: 57/57 green.
+
+**Findings:** (1) **Reuse-window semantics**: a stale tab replaying the *consumed*
+predecessor token inside the window is answered by the chain's cached renewal (the
+parallel-401 storm cover) — only outside the window does the real `/token` attempt burn.
+The test asserts both; this forced `renewal_reuse_window` to become an option (default
+2 min, .NET hard-coded). (2) **h11 trap**: the cookie-scratch `Response()` carries a
+default `content-length` header — appending its raw headers to a real response yields
+"conflicting Content-Length" and a dropped connection; only `set-cookie` headers are
+copied now. (3) itsdangerous timestamps have second granularity — renewal tests sleep
+2.2 s for 1 s sessions. (4) The renewal uses a per-call `httpx.AsyncClient` (renewals
+are rare) vs .NET's pooled client — noted, not optimized.
 
 ## Stage 4 — CSRF signed double-submit layer (S)
 

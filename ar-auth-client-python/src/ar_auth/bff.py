@@ -11,7 +11,10 @@ Requires the ``[fastapi]`` extra (``authlib``, ``httpx``, ``itsdangerous``,
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import hashlib
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import timedelta
@@ -19,21 +22,26 @@ from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, Optional
 from urllib.parse import urlsplit
 
+import httpx
 from authlib.integrations.base_client import OAuthError
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2 import OAuth2Error
+from cryptography.fernet import Fernet, InvalidToken
 from itsdangerous import URLSafeTimedSerializer
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
 from .exceptions import ConfigurationError
 
-__all__ = ["BffCsrfMode", "BffOptions", "ArAuthBff", "add_ar_auth_bff"]
+__all__ = ["BffCsrfMode", "BffOptions", "BffRenewOutcome", "ArAuthBff", "add_ar_auth_bff"]
 
 SESSION_COOKIE_SUFFIX = "ar_bff_session"
 STATE_COOKIE_SUFFIX = "ar_bff_state"  # correlation, session-backed via SessionMiddleware
+REFRESH_COOKIE_SUFFIX = "ar_bff_refresh"  # Fernet-parked refresh token (§3.5)
 RETURN_URL_SESSION_KEY = "_ar_bff_return_url"
+RENEWED_CLAIMS_SCOPE_KEY = "ar_bff_renewed_claims"
 
 
 class BffCsrfMode(str, Enum):
@@ -78,6 +86,8 @@ class BffOptions:
     cookie_name_prefix: Optional[str] = None
     session_expiry: timedelta = timedelta(hours=8)
     correlation_ttl: timedelta = timedelta(minutes=10)
+    refresh_cookie_ttl: timedelta = timedelta(days=30)
+    renewal_reuse_window: timedelta = timedelta(minutes=2)
     csrf: BffCsrfMode = BffCsrfMode.SIGNED_DOUBLE_SUBMIT
     scope: str = "openid profile"
     secure_cookies: Optional[bool] = None
@@ -100,6 +110,10 @@ class BffOptions:
             raise ConfigurationError("BffOptions.session_expiry must be positive")
         if self.correlation_ttl.total_seconds() <= 0:
             raise ConfigurationError("BffOptions.correlation_ttl must be positive")
+        if self.refresh_cookie_ttl.total_seconds() <= 0:
+            raise ConfigurationError("BffOptions.refresh_cookie_ttl must be positive")
+        if self.renewal_reuse_window.total_seconds() <= 0:
+            raise ConfigurationError("BffOptions.renewal_reuse_window must be positive")
 
         if self.public_base_url:
             parts = urlsplit(self.public_base_url)
@@ -134,10 +148,92 @@ class BffOptions:
         return int(self.correlation_ttl.total_seconds())
 
     @property
+    def refresh_seconds(self) -> int:
+        return int(self.refresh_cookie_ttl.total_seconds())
+
+    @property
+    def reuse_window_seconds(self) -> float:
+        return self.renewal_reuse_window.total_seconds()
+
+    @property
     def effective_cookie_prefix(self) -> str:
         if self.cookie_name_prefix is not None:
             return self.cookie_name_prefix
         return _cookie_prefix(self.cookie_path)
+
+
+class _RefreshStore:
+    """Fernet-encrypted parking for the refresh token (§3.5): HttpOnly cookie,
+    separate name from the session cookie, same app-local path. The browser
+    holds an opaque blob; only the app's configured secret can reveal the token."""
+
+    def __init__(
+        self,
+        fernet: Fernet,
+        cookie_name: str,
+        cookie_path: str,
+        secure: bool,
+        max_age: int,
+    ) -> None:
+        self._fernet = fernet
+        self.cookie_name = cookie_name
+        self._path = cookie_path
+        self._secure = secure
+        self._max_age = max_age
+
+    def park(self, response: Response, refresh_token: str) -> None:
+        response.set_cookie(
+            self.cookie_name,
+            self._fernet.encrypt(refresh_token.encode()).decode("utf-8"),
+            max_age=self._max_age,
+            path=self._path,
+            httponly=True,
+            samesite="lax",
+            secure=self._secure,
+        )
+
+    def read(self, request: Request) -> Optional[str]:
+        raw = request.cookies.get(self.cookie_name)
+        if not raw:
+            return None
+        try:
+            return self._fernet.decrypt(raw.encode("utf-8")).decode("utf-8")
+        except InvalidToken:
+            # Wrong secret or a tampered value — the caller treats it as garbage.
+            return None
+
+    def delete(self, response: Response) -> None:
+        response.delete_cookie(self.cookie_name, path=self._path)
+
+
+class BffRenewOutcome(str, Enum):
+    """Outcome of a silent-renewal attempt."""
+
+    RENEWED = "renewed"  # session (re-)issued — by this call or a reused concurrent renewal
+    REJECTED = "rejected"  # parked refresh definitively rejected — burn the cookie
+    UNAVAILABLE = "unavailable"  # transient failure — keep the parked cookie
+
+
+@dataclass
+class RenewalResult:
+    outcome: BffRenewOutcome
+    claims: Optional[Dict[str, Any]] = None
+    refresh_token: Optional[str] = None  # the rotated token (RENEWED only)
+
+
+@dataclass
+class _RenewedSession:
+    claims: Dict[str, Any]
+    refresh_token: str
+    renewed_at: float
+
+
+class _ChainState:
+    """Single-flight gate + latest result for one refresh-token chain."""
+
+    def __init__(self) -> None:
+        self.lock: "asyncio.Lock" = asyncio.Lock()
+        self.latest: Optional[_RenewedSession] = None
 
 
 class ArAuthBff:
@@ -149,6 +245,17 @@ class ArAuthBff:
         self.options = options
         self.session_cookie_name = f"{options.effective_cookie_prefix}{SESSION_COOKIE_SUFFIX}"
         self.state_cookie_name = f"{options.effective_cookie_prefix}{STATE_COOKIE_SUFFIX}"
+        self.refresh_cookie_name = f"{options.effective_cookie_prefix}{REFRESH_COOKIE_SUFFIX}"
+
+        self._refresh_store = _RefreshStore(
+            Fernet(base64.urlsafe_b64encode(_derive_key(options._secret_bytes, "refresh"))),
+            self.refresh_cookie_name,
+            options.cookie_path,
+            options.secure_cookies,
+            options.refresh_seconds,
+        )
+        # Single-flight renewal state, keyed by SHA-256 of the refresh token.
+        self._renewal_chains: Dict[str, _ChainState] = {}
 
         self._session_signer = URLSafeTimedSerializer(
             _derive_key(options._secret_bytes, "session").hex(),
@@ -221,6 +328,10 @@ class ArAuthBff:
 
         response = RedirectResponse(return_url, status_code=302)
         self._set_session_cookie(response, claims)
+        refresh_token = token.get("refresh_token")
+        if refresh_token:
+            # Park the refresh token (§3.5); access/ID tokens are dropped outright.
+            self._refresh_store.park(response, refresh_token)
         return response
 
     async def logout(self, request: Request) -> Response:
@@ -228,13 +339,20 @@ class ArAuthBff:
         return_url = self._validate_return_url(request.query_params.get("returnUrl"))
         response = RedirectResponse(return_url, status_code=302)
         response.delete_cookie(self.session_cookie_name, path=self.options.cookie_path)
+        self._refresh_store.delete(response)  # the parked refresh goes too
         return response
 
     # ── session ticket ────────────────────────────────────────────────────────
 
     def authenticate(self, request: Request) -> Optional[Dict[str, Any]]:
-        """Validated claims from the app session cookie, or None (Stage 6 wires
-        this into the auth precedence)."""
+        """Validated claims from the renewed-then-parked chain, the app session
+        cookie, or None (Stage 6 wires this into the auth precedence)."""
+        renewed = request.scope.get(RENEWED_CLAIMS_SCOPE_KEY)
+        if renewed is not None:
+            return renewed
+        return self._authenticate_cookie(request)
+
+    def _authenticate_cookie(self, request: Request) -> Optional[Dict[str, Any]]:
         raw = request.cookies.get(self.session_cookie_name)
         if not raw:
             return None
@@ -261,6 +379,108 @@ class ArAuthBff:
             return "/"
         return url
 
+    # ── silent renewal (§3.5) ─────────────────────────────────────────────────
+
+    async def try_renew(self, request: Request) -> Optional[RenewalResult]:
+        """Attempts to (re-)issue the app session from the parked refresh token.
+
+        ar-auth refresh tokens are one-time-use with rotation: two concurrent
+        renewals carrying the same token race, and the loser burns a consumed
+        token into a spurious logout. All renewals for one token chain serialize
+        on a per-chain gate; waiters that arrive while a refresh is in flight
+        reuse its result instead of issuing another /token round-trip.
+        """
+        parked = self._refresh_store.read(request)
+        if not parked:
+            return None
+
+        # Lock/cache key — SHA-256 of the token, never the raw value.
+        chain = self._renewal_chains.setdefault(
+            hashlib.sha256(parked.encode()).hexdigest(), _ChainState()
+        )
+
+        async with chain.lock:
+            # Single-flight: a concurrent request may have refreshed this exact
+            # chain while we queued. Our carried token was consumed by that
+            # refresh — reuse its result within the reuse window (2 min default;
+            # covers the parallel-401 storm).
+            latest = chain.latest
+            if (
+                latest is not None
+                and latest.refresh_token != parked
+                and time.monotonic() - latest.renewed_at <= self.options.reuse_window_seconds
+            ):
+                return RenewalResult(BffRenewOutcome.RENEWED, latest.claims, latest.refresh_token)
+
+            result = await self._refresh(parked)
+            if result.outcome is BffRenewOutcome.RENEWED:
+                chain.latest = _RenewedSession(
+                    result.claims or {}, result.refresh_token or "", time.monotonic()
+                )
+            return result
+
+    async def _refresh(self, parked: str) -> RenewalResult:
+        try:
+            # Warm discovery (startup warmup) — this is a cache hit.
+            metadata = await self._client.load_server_metadata()
+            endpoint = metadata.get("token_endpoint")
+            if not endpoint:
+                return RenewalResult(BffRenewOutcome.UNAVAILABLE)
+
+            form = {
+                "grant_type": "refresh_token",
+                "refresh_token": parked,
+                "client_id": self.options.client_id,
+            }
+            async with httpx.AsyncClient(timeout=10) as http:
+                response = await http.post(endpoint, data=form)
+
+            # 400/401: the token itself is bad (consumed, expired, revoked,
+            # wrong client) — definitive; the parked cookie gets burned.
+            if response.status_code in (400, 401):
+                return RenewalResult(BffRenewOutcome.REJECTED)
+            if response.status_code >= 400:
+                return RenewalResult(BffRenewOutcome.UNAVAILABLE)
+
+            try:
+                tokens = response.json()
+            except ValueError:
+                return RenewalResult(BffRenewOutcome.UNAVAILABLE)
+
+            rotated = tokens.get("refresh_token")
+            id_token = tokens.get("id_token")
+            if not rotated or not id_token:
+                return RenewalResult(BffRenewOutcome.UNAVAILABLE)
+
+            # The renewed session mirrors the login principal: claims from a
+            # fully validated id_token (signature via warm JWKS, iss, aud, exp).
+            # Nonce is deliberately skipped — renewal performs no authorize
+            # round-trip, so there is nothing to compare (backend sends nonce ""
+            # on the refresh grant by design).
+            try:
+                userinfo = await self._client.parse_id_token(tokens, nonce=None)
+            except Exception:
+                return RenewalResult(BffRenewOutcome.REJECTED)
+            return RenewalResult(BffRenewOutcome.RENEWED, dict(userinfo), rotated)
+        except Exception:
+            # Transport/parse failures are transient — never burn the parked
+            # token for them.
+            return RenewalResult(BffRenewOutcome.UNAVAILABLE)
+
+    def _renewal_cookie_headers(self, result: RenewalResult):
+        """Set-Cookie raw headers for the renewal outcome: fresh session +
+        re-parked rotated refresh on RENEWED; parked-cookie deletion on
+        REJECTED; nothing on UNAVAILABLE (keep the cookie)."""
+        scratch = Response()
+        if result.outcome is BffRenewOutcome.RENEWED:
+            self._set_session_cookie(scratch, result.claims or {})
+            self._refresh_store.park(scratch, result.refresh_token or "")
+        elif result.outcome is BffRenewOutcome.REJECTED:
+            self._refresh_store.delete(scratch)
+        # Only the Set-Cookie headers — the scratch response also carries a
+        # default content-length that would conflict with the real response.
+        return [(n, v) for n, v in scratch.raw_headers if n == b"set-cookie"]
+
     # ── warmup ────────────────────────────────────────────────────────────────
 
     async def warmup(self) -> None:
@@ -270,6 +490,48 @@ class ArAuthBff:
         """
         await self._client.load_server_metadata()
         await self._client.fetch_jwk_set()
+
+
+class _BffRenewalMiddleware:
+    """Triggers silent renewal: anonymous request + parked refresh cookie +
+    no Bearer header (mirrors the .NET middleware placement). BFF routes are
+    exempt; a valid session skips renewal entirely."""
+
+    def __init__(self, app: Any, bff: "ArAuthBff"):
+        self.app = app
+        self.bff = bff
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":  # pragma: no cover
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
+        result: Optional[RenewalResult] = None
+        if self._should_attempt(request):
+            result = await self.bff.try_renew(request)
+            if result is not None and result.outcome is BffRenewOutcome.RENEWED and result.claims:
+                # The request that triggered renewal is authenticated by it.
+                scope[RENEWED_CLAIMS_SCOPE_KEY] = result.claims
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start" and result is not None:
+                headers = MutableHeaders(scope=message)
+                for name, value in self.bff._renewal_cookie_headers(result):
+                    headers.append(name.decode("latin-1"), value.decode("latin-1"))
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+    def _should_attempt(self, request: Request) -> bool:
+        options = self.bff.options
+        if request.url.path in (options.login_path, options.callback_path, options.logout_path):
+            return False
+        if "authorization" in request.headers:
+            return False  # Bearer requests are exempt (cross-domain contract)
+        if self.bff._authenticate_cookie(request) is not None:
+            return False  # valid session — nothing to renew
+        return self.bff._refresh_store.read(request) is not None
 
 
 def add_ar_auth_bff(app: Any, options: BffOptions) -> ArAuthBff:
@@ -292,6 +554,10 @@ def add_ar_auth_bff(app: Any, options: BffOptions) -> ArAuthBff:
         same_site="lax",
         https_only=options.secure_cookies,
     )
+    # Renewal sits outermost so it can stash renewed claims and append its
+    # Set-Cookie headers to every response kind (JSON included, not just
+    # redirects — mirrors the .NET middleware).
+    app.add_middleware(_BffRenewalMiddleware, bff=bff)
 
     app.add_api_route(options.login_path, bff.login, methods=["GET"], include_in_schema=False)
     app.add_api_route(options.callback_path, bff.callback, methods=["GET"], include_in_schema=False)
