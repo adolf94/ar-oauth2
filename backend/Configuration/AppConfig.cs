@@ -45,7 +45,16 @@ namespace backend.Configuration
     {
         public string Issuer { get; set; } = string.Empty;
         public string? RsaPrimaryKeyId { get; set; }
-        public string SecretName { get; set; } = string.Empty;
+        public string? SecretName { get; set; } = string.Empty;
         public string? KeyVaultUri { get; set; }
+
+        /// <summary>
+        /// Optional cookie domain for the ar_auth_session cookie (e.g. "adolfrey.com").
+        /// When set, sibling subdomains (app.adolfrey.com, api.adolfrey.com) receive the
+        /// cookie and their resource servers can validate it. When null/empty the cookie is
+        /// host-only (auth server only). The auth server itself never accepts the cookie —
+        /// validation happens in resource servers via Ar.Auth.OpenId.
+        /// </summary>
+        public string? SessionCookieDomain { get; set; }
     }
 }

@@ -37,6 +37,10 @@ var host = new HostBuilder()
 
         Console.WriteLine($"[DEBUG] Using Cosmos Database: '{appConfig.Cosmos.DatabaseName}' at '{appConfig.Cosmos.Endpoint}'");
 
+        // Session cookie: optional shared domain so sibling-subdomain resource servers
+        // (Ar.Auth.OpenId) can validate it. Null keeps the cookie host-only.
+        backend.Endpoints.AuthHelper.SessionCookieDomain = appConfig.Jwt.SessionCookieDomain;
+
         // Pass configuration to the DbContext
         services.AddDbContext<AppDbContext>(options =>
         {

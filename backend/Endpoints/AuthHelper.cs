@@ -56,6 +56,13 @@ namespace backend.Endpoints
 
         private const string SessionCookieName = "ar_auth_session";
 
+        /// <summary>
+        /// Optional cookie domain (e.g. "adolfrey.com") so sibling-subdomain resource
+        /// servers can receive the session cookie. Configured at startup from
+        /// AppConfig.Jwt.SessionCookieDomain; null keeps the cookie host-only.
+        /// </summary>
+        public static string? SessionCookieDomain { get; set; }
+
         public static void SetSessionCookie(HttpResponse res, string sessionToken)
         {
             var options = new CookieOptions
@@ -64,7 +71,8 @@ namespace backend.Endpoints
                 Secure = true,
                 SameSite = SameSiteMode.Lax, // Using Lax to survive redirects from apps
                 Expires = DateTime.UtcNow.AddDays(30),
-                Path = "/"
+                Path = "/",
+                Domain = string.IsNullOrEmpty(SessionCookieDomain) ? null : SessionCookieDomain
             };
             res.Cookies.Append(SessionCookieName, sessionToken, options);
         }
@@ -88,7 +96,8 @@ namespace backend.Endpoints
                 Path = "/",
                 HttpOnly = true,
                 Secure = true,
-                SameSite = SameSiteMode.Lax
+                SameSite = SameSiteMode.Lax,
+                Domain = string.IsNullOrEmpty(SessionCookieDomain) ? null : SessionCookieDomain
             });
         }
     }
