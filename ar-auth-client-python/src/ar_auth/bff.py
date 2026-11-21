@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 from urllib.parse import urlsplit
 
 import httpx
@@ -31,12 +31,18 @@ from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2 import OAuth2Error
 from cryptography.fernet import Fernet, InvalidToken
 from itsdangerous import URLSafeTimedSerializer
+from joserfc import jwt as _jose_jwt
+from joserfc.jwk import KeySet as _JoseKeySet
+from joserfc.jws import JWSRegistry as _JWSRegistry
 from starlette.datastructures import MutableHeaders
+from starlette.exceptions import HTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
+from .client import ArAuthClient
 from .exceptions import ConfigurationError
+from .session_cookie_guard import SessionCookieGuard
 
 __all__ = [
     "BffCsrfMode",
@@ -114,6 +120,12 @@ class BffOptions:
     scope: str = "openid profile"
     secure_cookies: Optional[bool] = None
     events: Optional["BffEvents"] = None
+    # Shared-Domain fallback (Stage 6): when no Bearer header and no app session
+    # exist, also accept the auth server's own ``ar_auth_session`` cookie.
+    # Opt-in, default off — the legacy shared-Domain variant from Stage 1.
+    allow_session_cookie: bool = False
+    session_cookie_name: str = "ar_auth_session"
+    allowed_cookie_origins: Optional[List[str]] = None
 
     def __post_init__(self) -> None:
         if not self.client_id:
@@ -453,6 +465,9 @@ class ArAuthBff:
             },
         )
         self._client = self._oauth.arauth
+        # Lazy sync client for the opt-in shared-session fallback (Stage 6):
+        # only constructed when a request actually exercises that leg.
+        self._arauth_client: Optional[ArAuthClient] = None
 
     # ── request-time path resolution (public_base_url → root_path →
     #    X-Forwarded-Prefix → bare host) ─────────────────────────────────────
@@ -606,6 +621,104 @@ class ArAuthBff:
         were re-issued (§3.5). Base fires ``BffEvents.on_renewed``."""
         if self.options.events:
             await _run_hook(self.options.events.on_renewed, context)
+
+    # ── FastAPI auth dependency (Stage 6 precedence) ──────────────────────────
+
+    async def auth(self, request: Request) -> Dict[str, Any]:
+        """FastAPI dependency resolving the caller's claims: Bearer header →
+        app session cookie (renewal-triggered; the middleware has already run
+        by the time a route dependency executes) → opt-in auth-server
+        session-cookie fallback.
+
+        The challenge stays JWT-bearer: anonymous callers get 401 with
+        ``WWW-Authenticate: Bearer`` — what the SPA's boot probe expects.
+        """
+        claims = await self._resolve_claims(request)
+        if claims is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return claims
+
+    async def _resolve_claims(self, request: Request) -> Optional[Dict[str, Any]]:
+        # 1. Bearer header — the cross-domain contract; wins whenever present.
+        if "authorization" in request.headers:
+            return await self._authenticate_bearer(request)
+
+        # 2. App session (renewal ran upstream). Presence chain, not validation
+        #    chain: an expired or garbage app cookie still routes here — while
+        #    a refresh token is parked, renewal is strictly better than the
+        #    shared auth-server cookie (the .NET Stage 6 finding).
+        claims = self.authenticate(request)
+        if claims is not None:
+            return claims
+
+        # 3. Opt-in auth-server session-cookie fallback (shared-Domain variant).
+        #    Only consulted when NO app cookie exists at all — otherwise leg 2
+        #    owns the request.
+        if (
+            self.options.allow_session_cookie
+            and not request.cookies.get(self.session_cookie_name)
+        ):
+            return self._authenticate_shared_session(request)
+
+        return None
+
+    async def _authenticate_bearer(self, request: Request) -> Optional[Dict[str, Any]]:
+        """Validates the Authorization header as an ar-auth access token (the
+        resource-server role) against the authority's warm JWKS. No audience
+        enforcement by default — cross-domain tokens carry API-scoped audiences
+        (mirrors ``ArAuthClient.verify_token``'s leniency)."""
+        parts = request.headers.get("authorization", "").split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            return None
+        token = parts[1]
+
+        try:
+            metadata = await self._client.load_server_metadata()
+            jwks = await self._client.fetch_jwk_set()
+            key_set = _JoseKeySet.import_key_set(jwks)
+            decoded = _jose_jwt.decode(
+                token, key=key_set, registry=_JWSRegistry(algorithms=["RS256"])
+            )
+        except Exception:  # malformed token, unknown kid, network failure
+            return None
+
+        claims = decoded.claims
+        if claims.get("iss") != metadata.get("issuer"):
+            return None
+        exp = claims.get("exp")
+        if exp is None or time.time() > float(exp) + 60:  # 60s leeway
+            return None
+        return claims
+
+    def _authenticate_shared_session(self, request: Request) -> Optional[Dict[str, Any]]:
+        """Validates the auth server's session cookie — origin guard first
+        (``SessionCookieGuard``), then the ar-auth session JWT (audience =
+        issuer, ``type == "session"``). Uses the sync ``ArAuthClient``;
+        discovery + JWKS are cached after the first hit."""
+        token = request.cookies.get(self.options.session_cookie_name)
+        if not token:
+            return None
+
+        request_origin = str(request.base_url).rstrip("/")
+        if not SessionCookieGuard.is_origin_allowed(
+            request.method,
+            request.headers.get("origin"),
+            request.headers.get("referer"),
+            request_origin,
+            self.options.allowed_cookie_origins,
+        ):
+            return None
+
+        try:
+            if self._arauth_client is None:
+                self._arauth_client = ArAuthClient(authority=self.options.authority)
+            return self._arauth_client.verify_session_token(token)
+        except Exception:  # TokenValidationError / InvalidTokenError / network
+            return None
 
     # ── session ticket ────────────────────────────────────────────────────────
 

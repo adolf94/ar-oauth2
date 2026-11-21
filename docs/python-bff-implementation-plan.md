@@ -279,15 +279,31 @@ alongside the renewed session, and retries. Same story as .NET; the test documen
       subclass-with-super composition, subclass-without-super opts out.
       Suite: 79/79 green.
 
-## Stage 6 — Precedence composition (S)
+## Stage 6 — Precedence composition (S) — ✅ DONE
 
-- [ ] **T6.1 — Auth dependency**: Bearer header → app session cookie (renewal trigger
+- [x] **T6.1 — Auth dependency**: Bearer header → app session cookie (renewal trigger
       included) → opt-in auth-server session-cookie fallback. Challenges stay
       `WWW-Authenticate: Bearer`. Expired app cookie routes to renewal, never falls
       through to the shared cookie while a parked refresh exists (renewal is strictly
       better — mirrors the .NET Stage 6 finding).
-- [ ] **T6.2 — Tests**: precedence order, renewal-over-fallback preference, `/claims`
-      shape (raw `sub` — no remapping caveat here).
+      Built as ``ArAuthBff.auth`` — an async method usable directly as
+      ``Depends(bff.auth)`` (the .NET policy scheme's analog). Fallback options live on
+      ``BffOptions`` (``allow_session_cookie``/``session_cookie_name``/
+      ``allowed_cookie_origins``). The Bearer leg validates via joserfc against
+      AuthLib's warm JWKS + manual iss/exp (60s leeway) — no audience enforcement by
+      default (mirrors ``ArAuthClient.verify_token``); the shared-session leg lazily
+      constructs a sync ``ArAuthClient`` (discovery + JWKS cached after first hit).
+      Presence chain preserved: a garbage/expired app cookie blocks the shared-cookie
+      fallthrough even when that cookie is valid.
+- [x] **T6.2 — Tests**: precedence order, renewal-over-fallback preference, `/claims`
+      shape (raw `sub` — no remapping caveat).
+      11 tests in `tests/test_stage6_bff.py` (`/claims` endpoint added to the test
+      app): Bearer-wins, invalid-Bearer-401-with-valid-session, wrong-issuer forged
+      token, app-session identity parity with `/me`, anonymous 401 +
+      `WWW-Authenticate: Bearer`, fallback on/off, non-session-token rejection, evil
+      origin, renewal-over-fallback (1s session + parked refresh: renewed sub wins,
+      one grant), presence-chain (garbage app cookie + valid shared cookie → 401).
+      Suite: **124/124 green**.
 
 ## Stage 7 — Docs, sample, release (M)
 

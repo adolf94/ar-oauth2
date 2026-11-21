@@ -10,7 +10,7 @@ import time
 from typing import Any, Awaitable, Callable, Optional
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ar_auth.bff import BffOptions, add_ar_auth_bff
@@ -67,6 +67,10 @@ class BffTestServer:
             if claims is None:
                 return JSONResponse({"error": "Not authenticated"}, status_code=401)
             return {"sub": claims.get("sub"), "claims": claims}
+
+        @app.get("/claims")
+        async def claims(user: Any = Depends(self.bff.auth)) -> Any:
+            return {"sub": user.get("sub"), "claims": user}
 
         @app.get("/public")
         async def public() -> Any:
