@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArAuth BFF sample</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+    nav a { margin-right: 1.5rem; }
+    pre { background: #f4f4f4; padding: .75rem 1rem; border-radius: .4rem; overflow: auto; }
+    button:disabled { opacity: .4; }
+  </style>
+</head>
+<body>
+  <h1>ArAuth BFF sample</h1>
+
+  <!-- The entire sign-in/out surface: plain links. -->
+  <nav>
+    <a href="/auth/login?returnUrl=/">Sign in</a>
+    <a href="/auth/logout?returnUrl=/">Sign out</a>
+  </nav>
+
+  <h2>Boot probe</h2>
+  <pre id="who">checking…</pre>
+
+  <h2>Unsafe request (POST /submit)</h2>
+  <p><button id="do-post" disabled>POST with XSRF header</button></p>
+  <pre id="post-result"></pre>
+
+  <script>
+    // ── The complete SPA auth contract: no tokens, no auth library. ──────────
+
+    // The XSRF-TOKEN cookie is deliberately readable by JS (not HttpOnly).
+    // Unsafe requests must echo it in a header; the server checks the
+    // HMAC signature, so a tossed/forged cookie value fails.
+    function xsrfHeader(headers = {}) {
+      const token = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+      return token ? { ...headers, "X-CSRF-Token": token } : headers;
+    }
+
+    async function boot() {
+      const res = await fetch("/me", { credentials: "same-origin" });
+      const who = document.getElementById("who");
+      if (res.ok) {
+        const me = await res.json();
+        who.textContent = "signed in as " + JSON.stringify(me, null, 2);
+        document.getElementById("do-post").disabled = false;
+      } else if (res.status === 401) {
+        who.textContent = "signed out (401 — click Sign in)";
+      } else {
+        who.textContent = "unexpected status " + res.status;
+      }
+    }
+
+    document.getElementById("do-post").addEventListener("click", async () => {
+      const res = await fetch("/submit", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: xsrfHeader()
+      });
+      document.getElementById("post-result").textContent =
+        res.status + " " + await res.text();
+    });
+
+    boot();
+  </script>
+</body>
+</html>

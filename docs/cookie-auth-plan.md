@@ -314,6 +314,21 @@ Bearer + custom refresh-token grant, unchanged. It stops being a dependency of s
 with the signed double-submit CSRF token (§4), staged per `docs/bff-implementation-plan.md`
 (Stages 0–7, findings recorded there); consuming app provides `me`/`logout` endpoints per §5.
 
+**Python port (ar-auth-client-python 0.6.0)** — same architecture, framework-idiomatic
+surface, staged per `docs/python-bff-implementation-plan.md` (Stages 0–7, findings there):
+
+| Piece | Where | Notes |
+|---|---|---|
+| `ArAuthClient.verify_session_token` | `src/ar_auth/client.py` | Session JWT validation via the existing JWKS path (audience = authority + `type == "session"`) |
+| `SessionCookieGuard` | `src/ar_auth/session_cookie_guard.py` | CSRF origin rules shared by all integrations; opt-in `allow_session_cookie` on `ArAuthBearer` / `requires_auth` / `requires_auth_azure` |
+| **`add_ar_auth_bff`** (§3.7/§3.8) | `src/ar_auth/bff.py` | AuthLib owns state/PKCE/correlation (scoped `SessionMiddleware` correlation cookie, 10-min TTL); itsdangerous claims-only session ticket; explicit required secret (no default key ring) |
+| Refresh parking + silent renewal (§3.5) | `src/ar_auth/bff.py` | `_RefreshStore` (Fernet-parked cookie) + per-chain single-flight renewal + 2-min reuse window |
+| Signed double-submit CSRF (§4 layer 3) | `src/ar_auth/bff.py` | `_CsrfTokenService` — default-on, `BffCsrfMode.OFF` opt-out; `X-CSRF-Token` (`X-XSRF-TOKEN` alias) |
+| Extensibility surface (§3.9) | `src/ar_auth/bff.py` | Five hooks: `ArAuthBff` subclass (`add_ar_auth_bff(..., bff=)`) or `BffEvents` delegates; compose via `super()`; base work cannot be skipped |
+| Precedence composition | `src/ar_auth/bff.py` | `Depends(bff.auth)`: Bearer header → app session cookie → (opt-in) auth-server session cookie; challenges stay `WWW-Authenticate: Bearer` |
+| Test harness | `tests/` | Real-socket stub OIDC provider + uvicorn app-under-test (port of the .NET harness); 124 tests green |
+| README + sample | `ar-auth-client-python` | BFF headline (SPA contract, secret-provisioning box), demoted session-cookie section; `samples/bff_sample` (same SPA contract as the .NET sample) |
+
 ---
 
 ## 7. Deferred / future work

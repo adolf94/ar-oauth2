@@ -305,20 +305,31 @@ alongside the renewed session, and retries. Same story as .NET; the test documen
       one grant), presence-chain (garbage app cookie + valid shared cookie → 401).
       Suite: **124/124 green**.
 
-## Stage 7 — Docs, sample, release (M)
+## Stage 7 — Docs, sample, release (M) — ✅ DONE
 
-- [ ] **T7.1 — README rewrite** mirroring the .NET 1.3.0 structure: BFF headline
+- [x] **T7.1 — README rewrite** mirroring the .NET 1.3.0 structure: BFF headline
       (setup, flow, options, SPA contract, extensibility), **secret-provisioning
       deployment box** (persist + share the secret — no default key ring exists),
       local-dev https/proxy box (mkcert, `X-Forwarded-Proto`/`-Prefix`), session-cookie
       section demoted to the legacy shared-`Domain` fallback.
-- [ ] **T7.2 — Sample app**: FastAPI + static `index.html` implementing the exact SPA
+      Python specifics captured: the `Secure` flag is config-derived (not
+      per-request like .NET's `SameAsRequest`) — the box spells out
+      `secure_cookies=False` for plain-HTTP dev and `public_base_url` for TLS proxies.
+- [x] **T7.2 — Sample app**: FastAPI + static `index.html` implementing the exact SPA
       contract (port of `ar-auth-client-dotnet/samples/BffSample`) — living
       documentation and manual regression harness.
-- [ ] **T7.3 — Doc sync**: `docs/cookie-auth-plan.md` §6/§7 — Python port built;
-      this plan checked off with findings.
-- [ ] **T7.4 — Release**: version 0.6.0 in `pyproject.toml`, `CHANGELOG.md` created,
+      `samples/bff_sample/` — `index.html` copied verbatim from the .NET sample (the
+      contract is framework-agnostic), `main.py` env-driven
+      (`AR_AUTH_CLIENT_ID`/`AR_AUTH_BFF_SECRET`/optional `BFF_PUBLIC_BASE_URL`),
+      StaticFiles mounted last so BFF/API routes win. Import-smoke-verified
+      (all routes registered).
+- [x] **T7.3 — Doc sync**: `docs/cookie-auth-plan.md` §6/§7 — Python port built;
+      this plan checked off with findings. (§6 gained a Python-port table; §7
+      deferrals unchanged.)
+- [x] **T7.4 — Release**: version 0.6.0 in `pyproject.toml`, `CHANGELOG.md` created,
       full `pytest` run on supported interpreters.
+      `__version__` bumped to 0.6.0; suite **124/124 green** (Python 3.12;
+      `requires-python >= 3.9`).
 
 ---
 
