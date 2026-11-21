@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
+import secrets
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -42,6 +44,14 @@ STATE_COOKIE_SUFFIX = "ar_bff_state"  # correlation, session-backed via SessionM
 REFRESH_COOKIE_SUFFIX = "ar_bff_refresh"  # Fernet-parked refresh token (§3.5)
 RETURN_URL_SESSION_KEY = "_ar_bff_return_url"
 RENEWED_CLAIMS_SCOPE_KEY = "ar_bff_renewed_claims"
+XSRF_COOKIE_SUFFIX = "XSRF-TOKEN"  # deliberately JS-readable — that is the point
+CSRF_HEADER = "x-csrf-token"
+CSRF_HEADER_ALIAS = "x-xsrf-token"  # Angular-style alias
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+
+
+def _b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
 class BffCsrfMode(str, Enum):
@@ -236,6 +246,59 @@ class _ChainState:
         self.latest: Optional[_RenewedSession] = None
 
 
+class _CsrfTokenService:
+    """Signed double-submit CSRF token (§4, layer 3).
+
+    The cookie value is an HMAC-signed random blob: the SPA copies it verbatim
+    into the ``X-CSRF-Token`` header, and enforcement requires header == cookie
+    AND a valid signature. The signature closes cookie tossing — a sibling
+    subdomain can plant a ``Domain=.adolfrey.com`` cookie with an attacker-chosen
+    value that the SPA would dutifully echo (double-submit would match!), but it
+    cannot produce a valid signature. Stateless: no server-side store.
+    """
+
+    def __init__(self, key: bytes) -> None:
+        self._key = key
+
+    def _sign(self, raw: bytes) -> str:
+        signature = hmac.new(self._key, raw, hashlib.sha256).digest()
+        return f"{_b64url(raw)}.{_b64url(signature)}"
+
+    def issue(
+        self, response: Response, cookie_name: str, path: str, secure: bool, max_age: int
+    ) -> str:
+        """Issues a fresh signed XSRF cookie (readable by JS — by design) and
+        returns its value. Called at session establishment (callback) and at
+        silent renewal."""
+        value = self._sign(secrets.token_bytes(32))
+        response.set_cookie(
+            cookie_name,
+            value,
+            max_age=max_age,
+            path=path,
+            httponly=False,  # the SPA must read this one — by design
+            samesite="lax",
+            secure=secure,
+        )
+        return value
+
+    def validate(self, header: Optional[str], cookie_value: Optional[str]) -> bool:
+        """Double-submit check for an unsafe request: the header must echo the
+        cookie exactly, and the echoed value must carry a valid signature."""
+        if not header or not cookie_value or header != cookie_value:
+            return False
+        parts = header.split(".")
+        if len(parts) != 2:
+            return False
+        try:
+            raw = base64.urlsafe_b64decode(parts[0] + "=" * (-len(parts[0]) % 4))
+            signature = base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4))
+        except Exception:
+            return False
+        expected = hmac.new(self._key, raw, hashlib.sha256).digest()
+        return hmac.compare_digest(signature, expected)
+
+
 class ArAuthBff:
     """The BFF endpoints and session machinery. Security-critical work (state,
     PKCE, id_token validation) is owned by AuthLib + this class; Stage 5 adds
@@ -246,6 +309,8 @@ class ArAuthBff:
         self.session_cookie_name = f"{options.effective_cookie_prefix}{SESSION_COOKIE_SUFFIX}"
         self.state_cookie_name = f"{options.effective_cookie_prefix}{STATE_COOKIE_SUFFIX}"
         self.refresh_cookie_name = f"{options.effective_cookie_prefix}{REFRESH_COOKIE_SUFFIX}"
+        self.xsrf_cookie_name = f"{options.effective_cookie_prefix}{XSRF_COOKIE_SUFFIX}"
+        self._csrf = _CsrfTokenService(_derive_key(options._secret_bytes, "csrf"))
 
         self._refresh_store = _RefreshStore(
             Fernet(base64.urlsafe_b64encode(_derive_key(options._secret_bytes, "refresh"))),
@@ -332,6 +397,15 @@ class ArAuthBff:
         if refresh_token:
             # Park the refresh token (§3.5); access/ID tokens are dropped outright.
             self._refresh_store.park(response, refresh_token)
+        if self.options.csrf is not BffCsrfMode.OFF:
+            # Fresh CSRF token alongside the fresh session (§4, layer 3).
+            self._csrf.issue(
+                response,
+                self.xsrf_cookie_name,
+                self.options.cookie_path,
+                self.options.secure_cookies,
+                self.options.session_seconds,
+            )
         return response
 
     async def logout(self, request: Request) -> Response:
@@ -340,6 +414,7 @@ class ArAuthBff:
         response = RedirectResponse(return_url, status_code=302)
         response.delete_cookie(self.session_cookie_name, path=self.options.cookie_path)
         self._refresh_store.delete(response)  # the parked refresh goes too
+        response.delete_cookie(self.xsrf_cookie_name, path=self.options.cookie_path)
         return response
 
     # ── session ticket ────────────────────────────────────────────────────────
@@ -475,6 +550,17 @@ class ArAuthBff:
         if result.outcome is BffRenewOutcome.RENEWED:
             self._set_session_cookie(scratch, result.claims or {})
             self._refresh_store.park(scratch, result.refresh_token or "")
+            if self.options.csrf is not BffCsrfMode.OFF:
+                # Fresh CSRF token alongside the fresh session. The request that
+                # triggered renewal keeps passing on its OLD still-signed token;
+                # the SPA picks the new one up on its next read.
+                self._csrf.issue(
+                    scratch,
+                    self.xsrf_cookie_name,
+                    self.options.cookie_path,
+                    self.options.secure_cookies,
+                    self.options.session_seconds,
+                )
         elif result.outcome is BffRenewOutcome.REJECTED:
             self._refresh_store.delete(scratch)
         # Only the Set-Cookie headers — the scratch response also carries a
@@ -493,9 +579,15 @@ class ArAuthBff:
 
 
 class _BffRenewalMiddleware:
-    """Triggers silent renewal: anonymous request + parked refresh cookie +
-    no Bearer header (mirrors the .NET middleware placement). BFF routes are
-    exempt; a valid session skips renewal entirely."""
+    """Silent renewal + CSRF enforcement (mirrors the .NET middleware):
+
+    - renewal: anonymous request + parked refresh cookie + no Bearer header;
+      BFF routes are exempt; a valid session skips renewal entirely.
+    - CSRF (§4, layer 3): signed double-submit on unsafe cookie-authenticated
+      calls. Bearer requests are exempt (attacker JS cannot forge Authorization
+      headers), and so are anonymous requests (401 is the response there —
+      403 would mislead the SPA).
+    """
 
     def __init__(self, app: Any, bff: "ArAuthBff"):
         self.app = app
@@ -521,6 +613,13 @@ class _BffRenewalMiddleware:
                     headers.append(name.decode("latin-1"), value.decode("latin-1"))
             await send(message)
 
+        # CSRF runs after renewal: a POST that renewed is cookie-authenticated
+        # and must pass on its OLD still-signed XSRF token.
+        if self._requires_csrf(request) and not self._csrf_valid(request):
+            response = Response(status_code=403)
+            await response(scope, receive, send_wrapper)  # renewal cookies ride along
+            return
+
         await self.app(scope, receive, send_wrapper)
 
     def _should_attempt(self, request: Request) -> bool:
@@ -532,6 +631,25 @@ class _BffRenewalMiddleware:
         if self.bff._authenticate_cookie(request) is not None:
             return False  # valid session — nothing to renew
         return self.bff._refresh_store.read(request) is not None
+
+    def _requires_csrf(self, request: Request) -> bool:
+        if request.method in SAFE_METHODS:
+            return False
+        options = self.bff.options
+        if options.csrf is BffCsrfMode.OFF:
+            return False
+        if request.url.path in (options.login_path, options.callback_path, options.logout_path):
+            return False
+        if "authorization" in request.headers:
+            return False  # Bearer requests are exempt
+        # Only the cookie-authenticated path is CSRF-exposed (renewed requests
+        # count — authenticate() sees the renewed scope claims first).
+        return self.bff.authenticate(request) is not None
+
+    def _csrf_valid(self, request: Request) -> bool:
+        cookie_value = request.cookies.get(self.bff.xsrf_cookie_name)
+        header = request.headers.get(CSRF_HEADER) or request.headers.get(CSRF_HEADER_ALIAS)
+        return self.bff._csrf.validate(header, cookie_value)
 
 
 def add_ar_auth_bff(app: Any, options: BffOptions) -> ArAuthBff:

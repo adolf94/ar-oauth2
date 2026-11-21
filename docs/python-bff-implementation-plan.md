@@ -203,18 +203,37 @@ copied now. (3) itsdangerous timestamps have second granularity — renewal test
 2.2 s for 1 s sessions. (4) The renewal uses a per-call `httpx.AsyncClient` (renewals
 are rare) vs .NET's pooled client — noted, not optimized.
 
-## Stage 4 — CSRF signed double-submit layer (S)
+## Stage 4 — CSRF signed double-submit layer (S) — ✅ DONE
 
-Parallel with Stage 3 (independent files, both depend on 2).
+Parallel with Stage 3 (independent files, both depend on 2) — landed after it.
 
-- [ ] **T4.1 — Issuance**: HMAC-signed `XSRF-TOKEN` cookie (deliberately JS-readable,
-      csrf-purpose subkey), issued at callback and renewal.
-- [ ] **T4.2 — Enforcement** (after renewal, before authorization) on unsafe methods:
-      request cookie vs `X-CSRF-Token` header (`X-XSRF-TOKEN` accepted as an alias) with
-      signature check — sibling-subdomain cookie-tossing fails the HMAC. 403 on
-      authenticated-mismatch, 401 for anonymous; `csrf=off` mode for opt-out.
-- [ ] **T4.3 — Tests**: round-trip, tossed/unsigned cookie rejected, alias header,
-      off mode, 401/403 semantics.
+- [x] **T4.1 — Issuance** (`_CsrfTokenService`): HMAC-SHA256-signed random 32-byte blob
+      (`b64(raw).b64(sig)`, csrf-purpose subkey, `hmac.compare_digest` on check), issued
+      as a **JS-readable** `{prefix}XSRF-TOKEN` cookie (HttpOnly off by design, Lax,
+      path-scoped, session-lifetime-aligned) at the callback and at silent renewal.
+- [x] **T4.2 — Enforcement**: lives in the renewal middleware — **after** renewal (a
+      POST that renewed is authenticated and passes on its OLD still-signed token),
+      before the app. Unsafe methods only; Bearer requests exempt (attacker JS cannot
+      forge an Authorization header); anonymous requests exempt (the app answers 401 —
+      403 would mislead the SPA); BFF routes exempt; safe = GET/HEAD/OPTIONS/TRACE.
+      Header `X-CSRF-Token` with `X-XSRF-TOKEN` accepted as the Angular-style alias;
+      the header must echo the cookie exactly AND carry a valid signature — a tossed
+      sibling-subdomain cookie fails the HMAC. Mismatch → 403 short-circuit, and
+      renewal cookies still ride the 403 response. `csrf=BffCsrfMode.OFF` opts out
+      (no issuance, no check).
+- [x] **T4.3 — Tests** (`tests/test_stage4_bff.py`, 12 tests): issuance attributes +
+      readable + signed shape, valid/wrong/missing header, alias, **tossed-cookie
+      rejection** (double-submit matches, signature fails), anonymous stays 401,
+      GET exempt, Bearer exempt, logout clears XSRF, off mode (no cookie, no check),
+      renewal interplay. Suite: 69/69 green.
+
+**Findings:** (1) **Naming deviation**: enum members are Python-idiomatic
+(`BffCsrfMode.OFF` / `SIGNED_DOUBLE_SUBMIT`) where the plan text said `.Off`. (2)
+**Post-idle stale-POST semantics** (surfaced by the renewal-interplay test): the XSRF
+cookie is session-lifetime-aligned, so after full expiry the browser has dropped the
+pair — a stale SPA POST still triggers renewal (authenticated in place) but fails the
+double-submit check → 403; the SPA re-probes with a GET, picks up the fresh pair issued
+alongside the renewed session, and retries. Same story as .NET; the test documents it.
 
 ## Stage 5 — Extensibility surface (M)
 

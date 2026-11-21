@@ -69,6 +69,13 @@ class BffTestServer:
         async def public() -> Any:
             return {"public": True}
 
+        @app.post("/submit")
+        async def submit(request: Request) -> Any:
+            claims = self.bff.authenticate(request)
+            if claims is None:
+                return JSONResponse({"error": "Not authenticated"}, status_code=401)
+            return {"accepted": True, "sub": claims.get("sub")}
+
         if configure_app:
             configure_app(app)
         self.app = app
