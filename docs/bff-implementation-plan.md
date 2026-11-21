@@ -22,10 +22,6 @@ shipped or deliberately deferred.
 | 6 | Policy-scheme integration + precedence | 3, 4 | S |
 | 7 | Docs, sample, release | 1–6 | M |
 
-Definition of done (whole plan): all stages checked, full test suite green on net8/net10
-(net9 environment permitting), `docs/cookie-auth-plan.md` §6 updated to "built", packages
-version-bumped and building.
-
 ---
 
 ## Stage 0 — Groundwork decisions (XS) — ✅ DONE
@@ -323,18 +319,7 @@ do not hand-roll correlation logic. *(Design doc §3.3, §3.6.)*
 | Item | Where |
 |---|---|
 | Management carve-out (backend cookie auth + DB role re-check + `[Authorize]` migration) | `docs/cookie-auth-plan.md` §7 |
-| Python cookie-validation port (if a same-domain *python* API ever happens) | `docs/cookie-auth-plan.md` §6 note |
 | `end_session_endpoint` on the auth server | Triggered only by SSO auto-login (§10.A) |
 | Cross-site cookie support (`SameSite=None` Phase 2) | Rejected unless a real Safari-proof case appears (§7) |
 | Session → access-token minting endpoint for browser-side user-token calls | Open question §9.2 |
 | Client registration for the first real app | Ops task at app-launch, not code |
-
-## Sequencing notes
-
-- Stage 4 can proceed **in parallel** with Stage 3 (different files, both depend on 2).
-- Stages 2 and 3 each end with integration tests via the T0.1 harness — do not start 2
-  without the harness decision.
-- If T0.2's cookie naming lands as "derive prefix from CookiePath", revisit Stage 1 files
-  once, before Stage 2 starts — it threads through every cookie write.
-- Single-flight (T3.3) is not an optimization — ar-auth refresh tokens are one-time-use;
-  without it, parallel expiry reliably logs users out.

@@ -62,10 +62,6 @@ extra) · **Release version:** 0.6.0
 | 6 | Precedence composition (Bearer > app cookie > session cookie) | 3, 4 | S |
 | 7 | Docs, sample, release (0.6.0) | 1–6 | M |
 
-Definition of done: all stages checked with findings recorded (same convention as the
-.NET plan), `pytest` green, README mirroring the .NET 1.3.0 structure, version 0.6.0 +
-CHANGELOG.
-
 ---
 
 ## Stage 0 — Groundwork decisions + harness (XS) — ✅ DONE
@@ -340,14 +336,6 @@ alongside the renewed session, and retries. Same story as .NET; the test documen
 | Backend changes of any kind | None needed — verified in the .NET effort |
 | JS client (`ar-auth-client`) | Frozen Bearer-only (cross-domain role) |
 | Flask BFF / Django | Validation fallback only for Flask; no Django support |
-| Multi-instance distributed renewal lock | Single-instance topology; document sticky-sessions caveat in README |
+| Multi-instance distributed renewal lock | Single-instance topology; sticky-sessions caveat documented in README |
 | Cross-site cookies (`SameSite=None` Phase 2) | Rejected unless a real Safari-proof case appears |
 | Management carve-out | `docs/cookie-auth-plan.md` §7 |
-
-## Sequencing notes
-
-- Stage 4 can proceed **in parallel** with Stage 3 (different files, both depend on 2).
-- Stage 1 is independent of the BFF stages and can land/ship first (mirrors the .NET
-  release order: fallback shipped with 1.3.0 alongside the BFF).
-- Each stage lands with its tests green and gets checked off here with findings, as
-  work completes.

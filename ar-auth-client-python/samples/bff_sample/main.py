@@ -5,24 +5,8 @@
 # session cookie. No access/refresh/ID token ever reaches JavaScript; the SPA
 # (wwwroot/index.html) is two links, a boot probe, and an XSRF header wrapper.
 #
-# Run it:
-#   1) Register a public client on the auth server (PKCE, no secret) whose
-#      redirect_uri is  <BFF_PUBLIC_BASE_URL or the bound url> + /auth/callback
-#   2) cd ar-auth-client-python
-#      AR_AUTH_CLIENT_ID=my-app AR_AUTH_BFF_SECRET="$(python -c \
-#          'import secrets; print(secrets.token_urlsafe(48))')" \
-#        uv run --extra fastapi uvicorn samples.bff_sample.main:app \
-#          --port 8443
-#      Optional (only behind a prefix-stripping reverse proxy, where the public
-#      URL differs from what the app sees): BFF_PUBLIC_BASE_URL=https://…/app
-#   3) open http://127.0.0.1:8443/  → "Sign in" → boot probe shows your sub.
-#
-# PRODUCTION NOTE: the session ticket and the parked refresh token are keyed to
-# BffOptions.secret. There is NO default key ring — every restart (and every
-# instance without the same secret) silently invalidates all sessions.
-# Persist the secret (env/secret-store) and share it across instances.
-# Renewal single-flight is per-process: scale-out needs sticky sessions or a
-# single BFF instance.
+# Run instructions and production notes (secret provisioning, sticky sessions):
+# see samples/bff_sample/README.md.
 # ─────────────────────────────────────────────────────────────────────────────
 
 import os

@@ -32,7 +32,7 @@ is only viable for same-site apps. This yields two clean classes of app:
   This exists for the sibling-subdomain case (e.g. `Domain=.adolfrey.com`); it does **not**
   apply to the BFF topology (§3), where the app host sets its own cookie.
 - Known dead weight: `ar_auth_session` is set on every login but read by nothing
-  (`GetSessionUserId` has zero callers). Left as-is until the management carve-out (§6).
+  (`GetSessionUserId` has zero callers). Left as-is until the management carve-out (§7).
 
 Session JWT facts: `type=session`, audience = Issuer, 30-day expiry, claims `sub`/`email`/`name`
 — **no roles, no scopes**. A cookie principal can therefore never pass `Roles`/`scope`
@@ -82,15 +82,15 @@ session cookie: HttpOnly, Secure, SameSite=Lax, Path=/application1/, Domain unse
 ### 3.3 The flow (code grant, backend-processed callback)
 
 ```
-1. SPA:          window.location = /application1/api/auth_login        (just a link)
+1. SPA:          window.location = /application1/api/auth/login      (just a link)
 2. API:          generate state + PKCE verifier
                  Set-Cookie: correlation cookie { state, verifier, returnUrl }
                              signed/encrypted (DataProtection), HttpOnly, Path=/application1/, ~5 min
                  302 → auth2.adolfrey.com/authorize?
-                       redirect_uri=https://apps.adolfrey.com/application1/api/auth_callback
+                       redirect_uri=https://apps.adolfrey.com/application1/api/auth/callback
                        &scope=… &state=… &code_challenge=…&code_challenge_method=S256
 3. Auth server:  user authenticates (password / passkey / Google / Telegram — unchanged)
-4. Auth server:  302 → /application1/api/auth_callback?code=…&state=…
+4. Auth server:  302 → /application1/api/auth/callback?code=…&state=…
 5. API callback: validate state vs correlation cookie (else reject: login CSRF)
                  delete correlation cookie (single-use)
                  exchange code (library: ExchangeCodeAsync)
@@ -103,7 +103,7 @@ session cookie: HttpOnly, Secure, SameSite=Lax, Path=/application1/, Domain unse
 
 **Auth server changes required: none.** The code flow, `state` pass-through, and
 `redirect_uri` binding already exist. Just register the client with
-`redirect_uri = https://apps.adolfrey.com/application1/api/auth_callback`.
+`redirect_uri = https://apps.adolfrey.com/application1/api/auth/callback`.
 
 ### 3.4 Client registration: no secrets needed (decided)
 
@@ -143,7 +143,7 @@ Correlation cookie rules (replicating what ASP.NET Core's OIDC handler does inte
 - Backend-generated `state` + PKCE verifier + validated `returnUrl`, DataProtection-signed.
 - Short TTL (~5 min), single-use (deleted on read), HttpOnly, `Path=/application1/`.
 - `returnUrl` must be validated as a local relative path before storage (open-redirect guard).
-- Multi-tab edge case: parallel `/auth_login` calls collide on one cookie name — use a
+- Multi-tab edge case: parallel `/auth/login` calls collide on one cookie name — use a
   random per-attempt suffix, or accept last-write-wins (older tab's callback fails state
   check and retries).
 
@@ -153,7 +153,7 @@ Correlation cookie rules (replicating what ASP.NET Core's OIDC handler does inte
 |---|---|---|---|
 | Session cookie | App host | App-local **encrypted ticket** (DataProtection via `SignInAsync`) — claims, **not** a token | "Who is this user" for the app API |
 | Refresh cookie | App host | **Encrypted refresh token** (parked; separate name, same path) | Silent server-side renewal (§3.5) |
-| `ar_auth_session` | Auth server | Auth-server **session JWT** (`type=session`) | Auth server login flow / management carve-out (§6) |
+| `ar_auth_session` | Auth server | Auth-server **session JWT** (`type=session`) | Auth server login flow / management carve-out (§7) |
 | `XSRF-TOKEN` | App host | Random value + HMAC signature (readable by JS, by design) | CSRF double-submit (§4) |
 
 The **access token** is never in a cookie: BFF apps hold it server-side only; cross-domain
@@ -175,6 +175,8 @@ validation, PKCE, code exchange, cookie-based session) with:
 - integration with the existing policy scheme (Bearer → cookie → …).
 
 Battle-tested framework machinery beats reimplementing correlation/state logic.
+(The Python port plays the same role with **AuthLib**'s Starlette client — see the
+Python table in §6.)
 
 ### 3.8 `AddArAuthBff` API shape (decided)
 
@@ -253,7 +255,7 @@ matters and is layered:
 |---|---|---|
 | **1. `SameSite=Lax`** | Blocks cross-site attacker POSTs from carrying the cookie. Gaps: top-level GET navigations (keep GETs safe) and **same-site sibling subdomains** — `fetch(…, {credentials:'include', mode:'no-cors'})` from `evil.adolfrey.com` executes against the API with the cookie attached (CORS blocks reading the response, not the state change). Lax alone is insufficient. | ✅ In place (cookie policy) |
 | **2. Origin check** | On unsafe methods, require `Origin`/`Referer` to be same-origin or allow-listed; missing `Origin` allowed on GET/HEAD/OPTIONS, rejected on POST/PUT/PATCH/DELETE. Kills the sibling-subdomain case. | ✅ Built — `SessionCookieGuard`, wired into both `ArAuthSessionHandler` and `ArAuthMiddleware` |
-| **3. Signed double-submit token** | Non-HttpOnly `XSRF-TOKEN` cookie (`Path=/application1/`) set at session establishment; middleware requires header `X-CSRF-Token` == cookie value on cookie-authenticated unsafe requests. **Signed variant** (HMAC via DataProtection) closes *cookie tossing*: a sibling subdomain can plant `Domain=.adolfrey.com` cookies that this host receives — it could set a matching plain token value, but cannot produce a valid signature. Stateless — no server-side store. | 🔜 To add in `AddArAuthBff` (opt-in, default-on) |
+| **3. Signed double-submit token** | Non-HttpOnly `XSRF-TOKEN` cookie (`Path=/application1/`) set at session establishment; middleware requires header `X-CSRF-Token` == cookie value on cookie-authenticated unsafe requests. **Signed variant** (HMAC via DataProtection) closes *cookie tossing*: a sibling subdomain can plant `Domain=.adolfrey.com` cookies that this host receives — it could set a matching plain token value, but cannot produce a valid signature. Stateless — no server-side store. | ✅ Built — default-on in `AddArAuthBff` / `add_ar_auth_bff` |
 
 SPA cost for layer 3: a three-line fetch wrapper (read `XSRF-TOKEN` cookie → send
 `X-CSRF-Token` header). Angular's `$http` does this natively (`XSRF-TOKEN`/`X-XSRF-TOKEN`
@@ -270,8 +272,8 @@ The entire auth surface of the SPA:
 
 ```tsx
 // sign in / sign out are plain navigations — no library, no tokens, no PKCE, no state
-<a href="/application1/api/auth_login">Sign in</a>
-<a href="/application1/api/logout">Sign out</a>
+<a href="/application1/api/auth/login?returnUrl=/">Sign in</a>
+<a href="/application1/api/auth/logout?returnUrl=/">Sign out</a>
 
 // boot: ask the server whether a session exists
 const res = await fetch("/application1/api/me");   // no Bearer → cookie decides
@@ -284,8 +286,8 @@ Rules:
 - **No `credentials: 'include'`** — same-origin requests carry cookies by default.
 - **Never read the session cookie** — it's HttpOnly by design; only `XSRF-TOKEN` is readable.
 - Token-renewal code: none — renewal is server-side (§3.5).
-- App API needs two trivial endpoints: `GET me` (`[Authorize]`, returns identity) and
-  `POST logout` (`SignOutAsync` + delete refresh cookie).
+- The SDK owns the login/callback/logout routes (§3.8); the app adds only one trivial
+  endpoint: `GET me` (`[Authorize]`, returns identity).
 
 `ar-auth-client` (JS) keeps its current role, **scope frozen**: cross-domain SPAs only —
 Bearer + custom refresh-token grant, unchanged. It stops being a dependency of same-domain apps.
@@ -310,9 +312,8 @@ Bearer + custom refresh-token grant, unchanged. It stops being a dependency of s
 | Test harness (T0.1) | `tests/Ar.Auth.OpenId.Tests` | In-proc Kestrel `StubOidcServer` (RSA JWKS, PKCE S256, rotating refresh) + `BffTestApp`; 76 tests green on net8/net10 |
 | README + sample | `ar-auth-client-dotnet` | BFF headline section (SPA contract, deployment box), demoted session-cookie section; runnable `samples/BffSample` |
 
-**Built (was "still to build"):** `AddArAuthBff` in `Ar.Auth.OpenId.AspNetCore` (§3.7)
-with the signed double-submit CSRF token (§4), staged per `docs/bff-implementation-plan.md`
-(Stages 0–7, findings recorded there); consuming app provides `me`/`logout` endpoints per §5.
+The .NET stack was staged per `docs/bff-implementation-plan.md` (Stages 0–7, findings
+recorded there); the consuming app provides the `GET me` boot probe per §5.
 
 **Python port (ar-auth-client-python 0.6.0)** — same architecture, framework-idiomatic
 surface, staged per `docs/python-bff-implementation-plan.md` (Stages 0–7, findings there):
