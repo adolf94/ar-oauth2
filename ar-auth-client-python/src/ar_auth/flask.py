@@ -5,6 +5,10 @@ from jwt.exceptions import InvalidTokenError
 
 from .client import ArAuthClient
 from .exceptions import TokenValidationError
+from .session_cookie_guard import SessionCookieGuard
+
+# Default name of the auth server's shared-Domain session cookie.
+DEFAULT_SESSION_COOKIE_NAME = "ar_auth_session"
 
 
 def requires_auth(
@@ -13,6 +17,9 @@ def requires_auth(
     required_roles: Optional[List[str]] = None,
     required_scopes: Optional[List[str]] = None,
     any_scopes: Optional[List[str]] = None,
+    allow_session_cookie: bool = False,
+    session_cookie_name: str = DEFAULT_SESSION_COOKIE_NAME,
+    allowed_cookie_origins: Optional[List[str]] = None,
 ) -> Callable:
     """Flask decorator to protect endpoints with ar-auth validation.
 
@@ -24,6 +31,13 @@ def requires_auth(
         required_roles: Roles required by the endpoint. Optional.
         required_scopes: Scopes required by the endpoint (all of them). Optional.
         any_scopes: Scopes of which the token must have at least one. Optional.
+        allow_session_cookie: Also accept the auth server's session cookie
+            (``ar_auth_session``) as a fallback credential when no Authorization
+            header is present. Opt-in; the Bearer header always wins. Optional.
+        session_cookie_name: Name of the session cookie. Defaults to
+            'ar_auth_session'. Optional.
+        allowed_cookie_origins: Extra origins allowed to use the session cookie
+            cross-origin (same-origin is always allowed). Optional.
 
     Returns:
         The Flask route decorator.
@@ -37,6 +51,24 @@ def requires_auth(
         @wraps(f)
         def decorated(*args, **kwargs):
             auth_header = request.headers.get("Authorization", None)
+
+            if not auth_header and allow_session_cookie:
+                # Session-cookie fallback: origin guard first, then the
+                # ar-auth session JWT (audience = issuer, type == "session").
+                token = request.cookies.get(session_cookie_name)
+                if token and SessionCookieGuard.is_origin_allowed(
+                    request.method,
+                    request.headers.get("Origin"),
+                    request.headers.get("Referer"),
+                    request.url_root.rstrip("/"),
+                    allowed_cookie_origins,
+                ):
+                    try:
+                        g.ar_auth_user = client.verify_session_token(token)
+                        return f(*args, **kwargs)
+                    except (TokenValidationError, InvalidTokenError):
+                        pass  # fall through to the normal 401
+
             if not auth_header:
                 return (
                     jsonify(

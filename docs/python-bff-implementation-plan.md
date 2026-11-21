@@ -100,22 +100,35 @@ CHANGELOG.
 - [x] **T0.6 — Version & packaging: MADE.** 0.6.0 at release (T7.4), single package,
       BFF behind the `[fastapi]` extra.
 
-## Stage 1 — Core session-cookie validation, the fallback (S)
+## Stage 1 — Core session-cookie validation, the fallback (S) — ✅ DONE
 
 The shared-`Domain` variant (auth server's `ar_auth_session` cookie honored directly) —
 the exact analog of the .NET resource-server work, all opt-in, default off.
+(Landed after Stages 0–5: it was deferred by an explicit "continue stage 2", then built
+as the prerequisite for Stage 6's third precedence leg — the .NET release order held:
+fallback + BFF ship together.)
 
-- [ ] **T1.1 — `ArAuthClient.verify_session_token(token)`**: JWKS via the existing
+- [x] **T1.1 — `ArAuthClient.verify_session_token(token)`**: JWKS via the existing
       cache, `aud` = authority, claim `type == "session"`; returns identity claims only.
       Core, framework-agnostic.
-- [ ] **T1.2 — `SessionCookieGuard`** port: origin rules (same-origin or explicit
+- [x] **T1.2 — `SessionCookieGuard`** port: origin rules (same-origin or explicit
       allow-list, port-insensitive host compare) — port the .NET unit tests too.
-- [ ] **T1.3 — Guard wiring**: `ArAuthBearer(allow_session_cookie=True,
+      **Correction**: the .NET compares *full origins* case-insensitively with default
+      ports trimmed (`Uri.GetLeftPart(Authority)` semantics), not hosts port-insensitively
+      — the ported `extract_origin` follows the .NET, and the plan's "port-insensitive"
+      wording was wrong. Port mismatch = rejection is covered by a test.
+- [x] **T1.3 — Guard wiring**: `ArAuthBearer(allow_session_cookie=True,
       allowed_cookie_origins=[...])`, `requires_auth(allow_session_cookie=True, ...)`,
       `requires_auth_azure(...)` — precedence: Bearer header always wins; 401 challenge
       stays `WWW-Authenticate: Bearer`.
-- [ ] **T1.4 — Tests**: validation matrix (wrong `aud`/`type`, expired, bad signature),
+      Findings: Azure `func.HttpRequest` exposes no parsed cookie collection —
+      `_get_request_cookie` parses the raw `Cookie` header via `http.cookies.SimpleCookie`;
+      the `validate_request` programmatic helper stays Bearer-only (documented).
+- [x] **T1.4 — Tests**: validation matrix (wrong `aud`/`type`, expired, bad signature),
       precedence, origin rejection, per-framework wiring.
+      Suite: 34 new tests (`tests/test_stage1_session.py`) — guard matrix port,
+      `verify_session_token` against the stub (valid / access-token rejected / garbage),
+      FastAPI + Flask + Azure wirings incl. Bearer-wins and off-by-default; **113/113 green**.
 
 ## Stage 2 — BFF routes: login / callback / logout (L) — ✅ DONE
 

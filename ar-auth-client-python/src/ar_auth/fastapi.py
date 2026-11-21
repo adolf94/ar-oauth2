@@ -5,6 +5,10 @@ from jwt.exceptions import InvalidTokenError
 
 from .client import ArAuthClient
 from .exceptions import TokenValidationError
+from .session_cookie_guard import SessionCookieGuard
+
+# Default name of the auth server's shared-Domain session cookie.
+DEFAULT_SESSION_COOKIE_NAME = "ar_auth_session"
 
 
 class ArAuthBearer(HTTPBearer):
@@ -17,6 +21,9 @@ class ArAuthBearer(HTTPBearer):
         required_roles: Optional[List[str]] = None,
         required_scopes: Optional[List[str]] = None,
         any_scopes: Optional[List[str]] = None,
+        allow_session_cookie: bool = False,
+        session_cookie_name: str = DEFAULT_SESSION_COOKIE_NAME,
+        allowed_cookie_origins: Optional[List[str]] = None,
         auto_error: bool = True,
     ):
         """Initializes the security dependency.
@@ -27,6 +34,14 @@ class ArAuthBearer(HTTPBearer):
             required_roles: Roles required by the endpoint. Optional.
             required_scopes: Scopes required by the endpoint (all of them). Optional.
             any_scopes: Scopes of which the token must have at least one. Optional.
+            allow_session_cookie: Also accept the auth server's session cookie
+                (``ar_auth_session``) as a fallback credential when no
+                Authorization header is present. Opt-in; the Bearer header
+                always wins when present. Optional.
+            session_cookie_name: Name of the session cookie. Defaults to
+                'ar_auth_session'.
+            allowed_cookie_origins: Extra origins allowed to use the session
+                cookie cross-origin (same-origin is always allowed). Optional.
             auto_error: Whether to automatically raise exceptions on verification errors.
         """
         super().__init__(auto_error=auto_error)
@@ -35,6 +50,33 @@ class ArAuthBearer(HTTPBearer):
         self.required_roles = required_roles or []
         self.required_scopes = required_scopes or []
         self.any_scopes = any_scopes or []
+        self.allow_session_cookie = allow_session_cookie
+        self.session_cookie_name = session_cookie_name
+        self.allowed_cookie_origins = allowed_cookie_origins
+
+    def _authenticate_session_cookie(self, request: Request) -> Optional[Dict[str, Any]]:
+        """Validates the auth-server session cookie (fallback credential).
+
+        The origin guard runs first (SessionCookieGuard); the token must be an
+        ar-auth session JWT (audience = issuer, type == "session"). Returns None
+        for anything less — the caller falls through to the normal 401 path.
+        """
+        token = request.cookies.get(self.session_cookie_name)
+        if not token:
+            return None
+
+        origin = request.headers.get("origin")
+        referer = request.headers.get("referer")
+        request_origin = str(request.base_url).rstrip("/")
+        if not SessionCookieGuard.is_origin_allowed(
+            request.method, origin, referer, request_origin, self.allowed_cookie_origins
+        ):
+            return None
+
+        try:
+            return self.client.verify_session_token(token)
+        except (TokenValidationError, InvalidTokenError):
+            return None
 
     async def __call__(self, request: Request) -> Optional[Dict[str, Any]]:
         """Validates the Authorization header and decodes the token.
@@ -45,6 +87,15 @@ class ArAuthBearer(HTTPBearer):
         Returns:
             The decoded JWT payload dictionary if successful (or None if auto_error is False).
         """
+        if self.allow_session_cookie and "authorization" not in request.headers:
+            claims = self._authenticate_session_cookie(request)
+            if claims is not None:
+                return claims
+            # No or invalid session cookie: the normal 401 path.
+            if self.auto_error:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+            return None
+
         credentials: Optional[HTTPAuthorizationCredentials] = await super().__call__(request)
         if not credentials:
             if self.auto_error:

@@ -139,6 +139,30 @@ class ArAuthClient:
         except Exception as e:
             raise TokenValidationError(f"Unexpected token validation error: {str(e)}") from e
 
+    def verify_session_token(self, token: str, leeway: int = 30) -> Dict[str, Any]:
+        """Decodes and validates an ar-auth **session** JWT.
+
+        Session JWTs are issued by the auth server with audience = issuer (the
+        authority) and carry ``type == "session"``; they hold identity claims
+        only — no roles/scopes, so privilege enforcement keeps requiring Bearer
+        (the resource-server fallback for the shared-``Domain`` cookie variant).
+
+        Args:
+            token: The raw session JWT string (the value of the ``ar_auth_session`` cookie).
+            leeway: Expiration check leeway in seconds. Defaults to 30.
+
+        Returns:
+            The decoded session-token claims dictionary.
+
+        Raises:
+            TokenValidationError: If validation fails, or the token is not an
+                ar-auth session token.
+        """
+        claims = self.verify_token(token, audience=self.authority, leeway=leeway)
+        if claims.get("type") != "session":
+            raise TokenValidationError("Token is not an ar-auth session token.")
+        return claims
+
     def get_userinfo(self, access_token: str) -> Dict[str, Any]:
         """Fetches user claims from the UserInfo endpoint.
 

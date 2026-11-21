@@ -2,6 +2,7 @@ import json
 import inspect
 import functools
 import contextvars
+from http.cookies import SimpleCookie
 from typing import Optional, List, Callable
 
 from jwt.exceptions import InvalidTokenError
@@ -14,6 +15,10 @@ except ImportError:
 
 from .client import ArAuthClient
 from .exceptions import TokenValidationError
+from .session_cookie_guard import SessionCookieGuard
+
+# Default name of the auth server's shared-Domain session cookie.
+DEFAULT_SESSION_COOKIE_NAME = "ar_auth_session"
 
 
 # ── ContextVar ─────────────────────────────────────────────────────────────────
@@ -225,6 +230,21 @@ class ArAuthAzureClient(ArAuthClient):
         )
 
 
+def _get_request_cookie(req: "func.HttpRequest", name: str) -> Optional[str]:
+    """Parses a single cookie out of the raw Cookie header (func.HttpRequest
+    does not expose a parsed cookie collection)."""
+    header = req.headers.get("Cookie") or req.headers.get("cookie")
+    if not header:
+        return None
+    try:
+        jar = SimpleCookie()
+        jar.load(header)
+        morsel = jar.get(name)
+        return morsel.value if morsel else None
+    except Exception:  # malformed Cookie header — treat as absent
+        return None
+
+
 # ── Decorator ─────────────────────────────────────────────────────────────────
 def requires_auth_azure(
     authority: str = "https://auth.adolfrey.com/api",
@@ -233,6 +253,9 @@ def requires_auth_azure(
     required_roles: Optional[List[str]] = None,
     required_scopes: Optional[List[str]] = None,
     any_scopes: Optional[List[str]] = None,
+    allow_session_cookie: bool = False,
+    session_cookie_name: str = DEFAULT_SESSION_COOKIE_NAME,
+    allowed_cookie_origins: Optional[List[str]] = None,
 ) -> Callable:
     """Azure Functions decorator to validate ar-auth Bearer tokens.
 
@@ -256,6 +279,13 @@ def requires_auth_azure(
         required_roles: Roles required by the endpoint. Optional.
         required_scopes: Scopes required by the endpoint (all of them). Optional.
         any_scopes: Scopes of which the token must have at least one. Optional.
+        allow_session_cookie: Also accept the auth server's session cookie
+            (``ar_auth_session``) as a fallback credential when no Authorization
+            header is present. Opt-in; the Bearer header always wins. Optional.
+        session_cookie_name: Name of the session cookie. Defaults to
+            'ar_auth_session'. Optional.
+        allowed_cookie_origins: Extra origins allowed to use the session cookie
+            cross-origin (same-origin is always allowed). Optional.
 
     Returns:
         The Azure Function handler decorator.
@@ -300,6 +330,30 @@ def requires_auth_azure(
         async def decorated(req: func.HttpRequest, *args, **kwargs):
             # Azure Functions request headers are case-insensitive / lower-cased
             auth_header = req.headers.get("Authorization") or req.headers.get("authorization")
+
+            if not auth_header and allow_session_cookie:
+                # Session-cookie fallback: origin guard first, then the
+                # ar-auth session JWT (audience = issuer, type == "session").
+                token = _get_request_cookie(req, session_cookie_name)
+                if token and SessionCookieGuard.is_origin_allowed(
+                    req.method,
+                    req.headers.get("Origin") or req.headers.get("origin"),
+                    req.headers.get("Referer") or req.headers.get("referer"),
+                    SessionCookieGuard.extract_origin(req.url) or "",
+                    allowed_cookie_origins,
+                ):
+                    try:
+                        payload = client.verify_session_token(token)
+                        token_ctx = _auth_user_ctx.set(payload)
+                        try:
+                            if _accepts_kwarg:
+                                kwargs["ar_auth_user"] = payload
+                            return await f(req, *args, **kwargs)
+                        finally:
+                            _auth_user_ctx.reset(token_ctx)
+                    except (TokenValidationError, InvalidTokenError):
+                        pass  # fall through to the normal 401
+
             if not auth_header:
                 return func.HttpResponse(
                     json.dumps(
