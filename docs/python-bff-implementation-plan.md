@@ -68,33 +68,37 @@ CHANGELOG.
 
 ---
 
-## Stage 0 — Groundwork decisions + harness (XS)
+## Stage 0 — Groundwork decisions + harness (XS) — ✅ DONE
 
-Decisions below are **PROPOSED** — confirm/veto at kickoff before Stage 1.
-
-- [ ] **T0.1 — Framework scope: PROPOSED.** The BFF ships **FastAPI/Starlette-only**
+- [x] **T0.1 — Framework scope: MADE.** The BFF ships **FastAPI/Starlette-only**
       (mounted as routes on the FastAPI app). The *session-cookie fallback* is cheap and
       framework-agnostic, so it wires into all three existing guards: FastAPI
       `ArAuthBearer`, Flask `requires_auth`, Azure `requires_auth_azure`. Flask BFF and
-      Django are out (no Django support exists today; add later only if a real app
-      appears).
-- [ ] **T0.2 — OIDC machinery: PROPOSED.** `authlib.integrations.starlette_client.OAuth`
+      Django are out.
+- [x] **T0.2 — OIDC machinery: MADE.** `authlib.integrations.starlette_client.OAuth`
       owns state/PKCE/correlation (async, PKCE S256). New deps under the `[fastapi]`
-      extra: `authlib`, `httpx`, `itsdangerous`, `cryptography`. Veto → hand-rolled
-      PKCE/state (+1 stage, more security surface we own — discouraged).
-- [ ] **T0.3 — Secret management: RECOMMENDED-MADE.** Explicit required `secret`
-      (bytes/hex; env/secret store recommended). Per-purpose subkeys via labeled
-      SHA-256 derivation; Fernet for the parked refresh cookie. No default, fail fast at
-      app construction. Documented as the top operational foot-gun (see T7.1).
-- [ ] **T0.4 — Test harness: PROPOSED.** In-proc stub OIDC provider (pytest + httpx
-      ASGI transport; RSA JWKS, PKCE S256 verification, rotating one-time-use refresh
-      with burn-on-read) + app-under-test factory — a direct port of the .NET
-      `StubOidcServer`/`BffTestApp` pair. Uses `pytest-asyncio` (add to dev extra).
-- [ ] **T0.5 — Python floor: PROPOSED.** Bump `requires-python` to `>=3.9` at 0.6.0
-      (current httpx/authlib releases need it; staying on 3.8 means pinning old deps).
-- [ ] **T0.6 — Version & packaging: RECOMMENDED-MADE.** 0.6.0, single package, no new
-      package name; BFF code lives in `ar_auth/bff.py` (+ `ar_auth/fastapi.py` wiring)
-      behind the `[fastapi]` extra.
+      extra: `authlib`, `httpx`, `itsdangerous`, `cryptography` (added to pyproject;
+      `authlib` 1.9.10 installed; httpx/itsdangerous/cryptography were already in the
+      dev venv).
+- [x] **T0.3 — Secret management: MADE.** Explicit required `secret`; per-purpose
+      subkeys via labeled SHA-256 derivation; Fernet for the parked refresh cookie. No
+      default, fail fast at app construction.
+- [x] **T0.4 — Test harness: MADE, with a deviation.** `tests/stub_oidc.py` is a direct
+      port of the .NET `StubOidcServer` (discovery, RSA JWKS, /authorize with PKCE
+      mandatory, /token with S256 verification, one-time-use rotating refresh with
+      burn-on-read, `create_access_token(sub)` / `create_session_token(sub)` /
+      `refresh_grant_count` / `revoke_all_refresh_tokens`). It runs on a **random
+      loopback port via uvicorn** (dev-only dep) instead of ASGI-in-memory transport —
+      the SDK's `PyJWKClient` uses urllib and `ArAuthClient` uses `requests`, which mock
+      transports cannot serve; real sockets keep every client library honest (same
+      approach as the .NET Kestrel stub). **Deviation: `pytest-asyncio` dropped** — sync
+      tests suffice, so the dep was never added. Findings recorded: Starlette now
+      requires `python-multipart` even for urlencoded `request.form()`, so the stub
+      parses token-request bodies directly. 10 smoke tests
+      (`tests/test_stage0_harness.py`) prove the stub before any BFF code exists.
+- [x] **T0.5 — Python floor: MADE.** `requires-python` bumped to `>=3.9` in pyproject.
+- [x] **T0.6 — Version & packaging: MADE.** 0.6.0 at release (T7.4), single package,
+      BFF behind the `[fastapi]` extra.
 
 ## Stage 1 — Core session-cookie validation, the fallback (S)
 
