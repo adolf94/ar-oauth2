@@ -2,7 +2,7 @@
 
 All notable changes to the `ar-auth-client` package are documented here.
 
-## 1.3.1
+## 1.3.2
 
 ### Added
 
@@ -35,7 +35,7 @@ All notable changes to the `ar-auth-client` package are documented here.
 ## 1.3.0
 
 > The release pipeline's version override published this build as 1.3.0;
-> `pyproject.toml` (0.6.0 at the time) was realigned in 1.3.1.
+> `pyproject.toml` (0.6.0 at the time) was realigned in 1.3.2.
 
 ### BFF integration for same-domain apps (FastAPI, `[fastapi]` extra)
 

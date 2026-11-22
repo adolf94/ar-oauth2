@@ -329,8 +329,9 @@ alongside the renewed session, and retries. Same story as .NET; the test documen
       **Correction (2026-11-22):** the release pipeline's version override published
       this build as **1.3.0** (the wheel the gatekeeper installs), not 0.6.0 — the
       CHANGELOG entry was retitled accordingly and `pyproject.toml` realigned to the
-      published lineage in **1.3.1** (BFF public-path restart-redirect fix, found in
-      production on a prefix-stripped deployment).
+      published lineage in **1.3.2** (BFF public-path restart-redirect fix and
+      post-login landing resolution, found in production on a prefix-stripped
+      deployment).
 
 ---
 
