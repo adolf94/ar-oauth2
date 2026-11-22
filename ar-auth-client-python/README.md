@@ -193,6 +193,14 @@ defaults to the derived cookie path, e.g. `application1.` for `/application1/`),
 `session_expiry` (default 8 h, silently renewed while the refresh chain lives),
 `scope`, `csrf`, and `secure_cookies`.
 
+**Post-login landing** (where the browser goes after `/auth/callback`, when the login
+link carries no `returnUrl`): the captured same-origin `Referer`
+(`use_referrer_as_return_url=True` — cross-site referrers are ignored) →
+`post_login_app_path` (explicit configured path) → the app's **public base path**
+— never the bare site root, which sits outside the app's mount behind a
+prefix-stripping proxy. An explicit `returnUrl` param always wins, and every
+landing target is local-only validated (open-redirect guard).
+
 **The SPA contract** — the complete frontend auth code, no library:
 
 ```html

@@ -4,6 +4,18 @@ All notable changes to the `ar-auth-client` package are documented here.
 
 ## 1.3.1
 
+### Added
+
+- **Post-login landing control** (`BffOptions`): when the login link carries no
+  `returnUrl`, the browser now lands at the captured same-origin `Referer`
+  (`use_referrer_as_return_url=True`, cross-site referrers ignored) →
+  `post_login_app_path` (explicit configured path) → the app's **public base
+  path** — previously the bare site root "/", which sits outside the app's mount
+  behind a prefix-stripping proxy (found in production: a prefixed deployment
+  landed the user on the proxy's catch-all site after a successful login).
+  An explicit `returnUrl` param keeps winning; all landing targets stay
+  local-only validated (open-redirect guard).
+
 ### Fixed
 
 - **BFF restart redirects now target the public login path.** Behind a

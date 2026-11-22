@@ -42,6 +42,7 @@ class BffTestServer:
         configure_bff: Optional[Callable[[BffOptions], None]] = None,
         configure_app: Optional[Callable[[FastAPI], None]] = None,
         bff_factory: Optional[Callable[[BffOptions], "Any"]] = None,
+        root_path: str = "",
     ):
         self.stub = stub
         kwargs = dict(
@@ -57,6 +58,11 @@ class BffTestServer:
         self.options = options
 
         app = FastAPI()
+        # Simulates the app living under a path prefix (root_path topology —
+        # non-stripping proxy). The SDK resolves redirect_uri, cookie Paths,
+        # and post-login/restart redirects from it per request.
+        if root_path:
+            app.root_path = root_path
         self.bff = add_ar_auth_bff(
             app, options, bff=bff_factory(options) if bff_factory else None
         )
@@ -86,6 +92,7 @@ class BffTestServer:
         if configure_app:
             configure_app(app)
         self.app = app
+        self.root_path = root_path
         self.base_url = ""
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None

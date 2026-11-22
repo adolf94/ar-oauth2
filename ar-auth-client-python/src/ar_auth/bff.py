@@ -129,6 +129,14 @@ class BffOptions:
     allow_session_cookie: bool = False
     session_cookie_name: str = "ar_auth_session"
     allowed_cookie_origins: Optional[List[str]] = None
+    # Post-login landing (where the browser goes after /auth/callback succeeds),
+    # used when the login link carries no returnUrl. Resolution order:
+    # returnUrl param → captured same-origin Referer (flag) → post_login_app_path
+    # → the app's public base path (never the bare site root — behind a
+    # prefix-stripping proxy that sits outside the app's mount). All targets are
+    # local-only validated (open-redirect guard).
+    post_login_app_path: Optional[str] = None
+    use_referrer_as_return_url: bool = False
 
     def __post_init__(self) -> None:
         if not self.client_id:
@@ -144,6 +152,8 @@ class BffOptions:
         for name in ("login_path", "callback_path", "logout_path"):
             if not getattr(self, name).startswith("/"):
                 raise ConfigurationError(f"BffOptions.{name} must start with '/'")
+        if self.post_login_app_path is not None and not self.post_login_app_path.startswith("/"):
+            raise ConfigurationError("BffOptions.post_login_app_path must start with '/'")
         if self.session_expiry.total_seconds() <= 0:
             raise ConfigurationError("BffOptions.session_expiry must be positive")
         if self.correlation_ttl.total_seconds() <= 0:
@@ -514,11 +524,55 @@ class ArAuthBff:
         prefix = self._public_path_prefix(request)
         return RedirectResponse(f"{prefix}{self.options.login_path}", status_code=302)
 
+    # ── post-login landing ────────────────────────────────────────────────────
+
+    def _same_origin_referer_path(self, request: Request) -> Optional[str]:
+        """Local path (+query) of the login request's Referer when it is
+        same-origin. Cross-site referrers are ignored — an attacker page
+        linking to the login route must not gain a post-login bounce
+        (open-redirect guard).
+        """
+        referer = request.headers.get("referer")
+        if not referer:
+            return None
+        ref_origin = SessionCookieGuard.extract_origin(referer)
+        # _redirect_base is the request's browser-visible origin (public_base_url
+        # → root_path/X-Forwarded-Prefix → bare host) — comparing against the
+        # raw request URL would never match behind a proxy.
+        my_origin = SessionCookieGuard.extract_origin(self._redirect_base(request))
+        if not ref_origin or not my_origin or ref_origin.lower() != my_origin.lower():
+            return None
+        parts = urlsplit(referer)
+        path = parts.path or "/"
+        if not path.startswith("/") or path.startswith(("//", "/\\")):
+            return None
+        return path + (f"?{parts.query}" if parts.query else "")
+
+    def _resolve_default_landing(self, request: Request) -> str:
+        """Post-login landing when the login link carried no ``returnUrl``:
+        captured same-origin Referer (opt-in flag) → ``post_login_app_path``
+        → the app's public base path. Never the bare site root — behind a
+        prefix-stripping proxy that sits outside the app's mount.
+        """
+        if self.options.use_referrer_as_return_url:
+            referrer = self._same_origin_referer_path(request)
+            if referrer is not None:
+                return referrer
+        if self.options.post_login_app_path is not None:
+            return self._validate_return_url(self.options.post_login_app_path)
+        prefix = self._public_path_prefix(request)
+        return f"{prefix}/" if prefix else "/"
+
     # ── endpoints (registered by add_ar_auth_bff) ─────────────────────────────
 
     async def login(self, request: Request) -> Response:
         """GET login_path?returnUrl=/local/path -> 302 to the authorize endpoint."""
-        return_url = self._validate_return_url(request.query_params.get("returnUrl"))
+        raw_return_url = request.query_params.get("returnUrl")
+        if raw_return_url is not None:
+            return_url = self._validate_return_url(raw_return_url)
+        else:
+            # Post-login landing resolution (options, see _resolve_default_landing).
+            return_url = self._resolve_default_landing(request)
 
         # Login hook: extra authorize parameters + return-URL adjustment
         # (re-sanitized below — hook output never bypasses the open-redirect guard).
@@ -560,7 +614,8 @@ class ArAuthBff:
             logger.warning("ar-auth BFF: callback got no usable id_token claims")
             return self._restart_redirect(request)
 
-        return_url = request.session.pop(RETURN_URL_SESSION_KEY, "/")
+        return_url = request.session.pop(RETURN_URL_SESSION_KEY, None) \
+            or self._resolve_default_landing(request)
 
         # Authenticated hook: enrich/replace the claims (this is what gets signed
         # into the session cookie), adjust the return URL (re-sanitized below),
