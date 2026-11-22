@@ -2,7 +2,28 @@
 
 All notable changes to the `ar-auth-client` package are documented here.
 
-## 0.6.0
+## 1.3.1
+
+### Fixed
+
+- **BFF restart redirects now target the public login path.** Behind a
+  prefix-stripping reverse proxy (e.g. Caddy `handle_path /gatekeeper/*`), the
+  graceful-restart `Location: /auth/login` resolved outside the app's mount —
+  the browser landed on the proxy's catch-all instead of the app's login page,
+  masking the actual login failure. The restart redirects (callback failure,
+  missing id_token claims, `on_authenticated` reject) now carry the
+  browser-visible prefix, resolved by the same rule as `redirect_uri`:
+  `public_base_url` path → `root_path` → `X-Forwarded-Prefix`.
+- BFF callback failures are now logged (error description only — never codes
+  or tokens); previously the graceful restart was silent and undebuggable
+  server-side. Found in production on a prefix-stripped deployment
+  (network-gatekeeper): a scope-gated login reject bounced the browser to the
+  wrong path with no log trail.
+
+## 1.3.0
+
+> The release pipeline's version override published this build as 1.3.0;
+> `pyproject.toml` (0.6.0 at the time) was realigned in 1.3.1.
 
 ### BFF integration for same-domain apps (FastAPI, `[fastapi]` extra)
 
