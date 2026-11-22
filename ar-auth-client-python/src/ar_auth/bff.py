@@ -16,6 +16,7 @@ import base64
 import hashlib
 import hmac
 import inspect
+import logging
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -43,6 +44,8 @@ from starlette.responses import RedirectResponse, Response
 from .client import ArAuthClient
 from .exceptions import ConfigurationError
 from .session_cookie_guard import SessionCookieGuard
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "BffCsrfMode",
@@ -490,6 +493,27 @@ class ArAuthBff:
     def _redirect_uri(self, request: Request) -> str:
         return self._redirect_base(request) + self.options.callback_path
 
+    def _public_path_prefix(self, request: Request) -> str:
+        """Browser-visible path prefix ("" or "/gatekeeper").
+
+        Path duality: redirects must target the PUBLIC path — behind a
+        prefix-stripping proxy, an internal "/auth/login" Location resolves
+        outside the app's mount (404 / the proxy's catch-all site). Same
+        resolution rule as _redirect_base: public_base_url path, else
+        root_path, else X-Forwarded-Prefix.
+        """
+        if self.options.public_base_url:
+            return urlsplit(self.options.public_base_url).path.rstrip("/")
+        root = request.scope.get("root_path") or ""
+        if not root:
+            root = request.headers.get("x-forwarded-prefix", "")
+        return root.rstrip("/")
+
+    def _restart_redirect(self, request: Request) -> RedirectResponse:
+        """Graceful login-flow restart: 302 to the PUBLIC login path."""
+        prefix = self._public_path_prefix(request)
+        return RedirectResponse(f"{prefix}{self.options.login_path}", status_code=302)
+
     # ── endpoints (registered by add_ar_auth_bff) ─────────────────────────────
 
     async def login(self, request: Request) -> Response:
@@ -520,12 +544,21 @@ class ArAuthBff:
         """
         try:
             token = await self._client.authorize_access_token(request)
-        except (OAuthError, OAuth2Error):
-            return RedirectResponse(self.options.login_path, status_code=302)
+        except (OAuthError, OAuth2Error) as exc:
+            # Consumed/expired code, state mismatch, or a provider error.
+            # Logged (description only — never codes or tokens): a silent
+            # restart is undebuggable from the outside.
+            logger.warning(
+                "ar-auth BFF: callback failed, restarting login (%s: %s)",
+                type(exc).__name__,
+                getattr(exc, "description", None) or getattr(exc, "error", ""),
+            )
+            return self._restart_redirect(request)
 
         userinfo = token.get("userinfo")  # validated id_token claims (AuthLib)
         if not userinfo:
-            return RedirectResponse(self.options.login_path, status_code=302)
+            logger.warning("ar-auth BFF: callback got no usable id_token claims")
+            return self._restart_redirect(request)
 
         return_url = request.session.pop(RETURN_URL_SESSION_KEY, "/")
 
@@ -537,7 +570,12 @@ class ArAuthBff:
         if auth_context.rejected:
             # No session, no parked refresh, no XSRF — restart the login flow
             # gracefully (mirrors the .NET Reject() path).
-            return RedirectResponse(self.options.login_path, status_code=302)
+            if auth_context.reject_reason:
+                logger.warning(
+                    "ar-auth BFF: on_authenticated rejected the login (%s)",
+                    auth_context.reject_reason,
+                )
+            return self._restart_redirect(request)
 
         # Claims only: the session cookie never holds access/refresh/ID tokens.
         claims: Dict[str, Any] = auth_context.claims
