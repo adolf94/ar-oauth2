@@ -209,6 +209,19 @@ Path duality — each path has an internal identity (route matching) and a publi
 | Route the middleware listens on | `redirect_uri` sent to `/authorize` (must match client registration exactly) |
 | | Cookie `Path` — cookies are matched against the **browser-visible** path; an internal-path cookie would never be sent back after prefix stripping |
 | | Post-login `returnUrl` redirects, end-session redirects |
+| | **Login-flow restart redirects** (callback failure, hook `reject()`) — an internal `/auth/login` Location lands on the proxy's catch-all after prefix stripping (2026-11 production finding, network-gatekeeper; fixed in the Python SDK 1.3.2) |
+| | **Post-login landing default** — the app's public base path, never the bare site root |
+
+**Post-login landing** (decided 2026-11): when the login link carries no `returnUrl`,
+resolve in order — captured same-origin `Referer` (opt-in flag; cross-site referrers
+ignored — an attacker page linking to the login route must not gain a post-login
+bounce) → configured app path → the app's public base path. An explicit `returnUrl`
+always wins; every target is local-only validated.
+
+**Restart observability**: a graceful login restart (consumed code, state mismatch,
+provider error, hook reject) is logged — provider error name/description only, never
+codes or tokens. A silent restart is undebuggable in production (the 2026-11 incident:
+attempt 1 of a double login failed with no log trail).
 
 Alternative topology worth supporting: if the proxy sends `X-Forwarded-Prefix` (or the app
 calls `UsePathBase`), internal == public and `PublicBaseUrl` can be derived instead of
@@ -286,6 +299,10 @@ Rules:
 - **No `credentials: 'include'`** — same-origin requests carry cookies by default.
 - **Never read the session cookie** — it's HttpOnly by design; only `XSRF-TOKEN` is readable.
 - Token-renewal code: none — renewal is server-side (§3.5).
+- **Landing**: after login the user lands back where they started — the SPA's
+  `returnUrl`, the page they clicked from (opt-in same-origin `Referer` capture), or
+  the app's public base path. Never the bare site root: behind a prefix-stripping
+  proxy that is outside the app's mount (§3.8).
 - The SDK owns the login/callback/logout routes (§3.8); the app adds only one trivial
   endpoint: `GET me` (`[Authorize]`, returns identity).
 
@@ -327,6 +344,7 @@ surface, staged per `docs/python-bff-implementation-plan.md` (Stages 0–7, find
 | Signed double-submit CSRF (§4 layer 3) | `src/ar_auth/bff.py` | `_CsrfTokenService` — default-on, `BffCsrfMode.OFF` opt-out; `X-CSRF-Token` (`X-XSRF-TOKEN` alias) |
 | Extensibility surface (§3.9) | `src/ar_auth/bff.py` | Five hooks: `ArAuthBff` subclass (`add_ar_auth_bff(..., bff=)`) or `BffEvents` delegates; compose via `super()`; base work cannot be skipped |
 | Precedence composition | `src/ar_auth/bff.py` | `Depends(bff.auth)`: Bearer header → app session cookie → (opt-in) auth-server session cookie; challenges stay `WWW-Authenticate: Bearer` |
+| Public-path redirects + post-login landing (1.3.2) | `src/ar_auth/bff.py` | Restart redirects and the no-`returnUrl` landing resolve the public path (`public_base_url` path → `root_path` → `X-Forwarded-Prefix`); landing order: `returnUrl` → same-origin `Referer` (flag) → `post_login_app_path` → public base path; callback failures logged. Production finding 2026-11 (prefix-stripped deployment) |
 | Test harness | `tests/` | Real-socket stub OIDC provider + uvicorn app-under-test (port of the .NET harness); 124 tests green |
 | README + sample | `ar-auth-client-python` | BFF headline (SPA contract, secret-provisioning box), demoted session-cookie section; `samples/bff_sample` (same SPA contract as the .NET sample) |
 
@@ -357,6 +375,15 @@ Cookie auth for the backend's own **management endpoints** — the `frontend/` a
 
 `SameSite=None` + per-client allow-list + Safari fallback guidance. Explicitly rejected for
 now: third-party cookies are unreliable in Safari regardless; cross-domain apps use Bearer.
+
+### .NET restart/landing redirect parity (found 2026-11)
+
+The .NET BFF still redirects login-flow restarts (`OnRemoteFailure`, `OnAuthenticated`
+reject) to the **internal** `LoginPath` (`ArAuthBffExtensions`), and the no-`returnUrl`
+landing defaults to the bare site root — behind a prefix-stripping proxy both land
+outside the app's mount. The Python SDK fixed this in 1.3.2 (public-path rule +
+landing resolution + restart logging, found in production on network-gatekeeper);
+mirror in `Ar.Auth.OpenId.AspNetCore` when a prefixed .NET deployment appears.
 
 ---
 
