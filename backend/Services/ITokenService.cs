@@ -1,3 +1,4 @@
+using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using backend.Models;
@@ -9,9 +10,15 @@ namespace backend.Services
         Task<(string Token, string Scopes)> GenerateAccessToken(User user, Client client, string scopes, string? sid = null, int lifetimeSeconds = 3600);
         Task<(string Token, string Scopes)> GenerateClientAccessToken(Client client, string requestedScopes);
         ClaimsPrincipal? ValidateAccessToken(string jwt, string? audience = null);
-        Task<string> GenerateRefreshTokenAsync(string userId, string clientId, string scopes, string? sid = null);
+        Task<string> GenerateRefreshTokenAsync(string userId, string clientId, string scopes, string? sid = null, DateTime? createdAt = null);
         Task<Token?> ValidateRefreshTokenAsync(string tokenValue, string clientId);
         Task<string> RotateRefreshTokenAsync(Token oldToken, string? sid = null);
+        /// <summary>
+        /// Deletes every refresh token belonging to the session (all Tokens rows
+        /// sharing the given Sid, including rotated tombstones). Used both for
+        /// explicit revocation and as the response to refresh-token replay.
+        /// </summary>
+        Task RevokeSessionAsync(string sid);
         string GenerateIdToken(User user, Client client, string nonce = "", string? sid = null);
         Task<bool> IsScopeAuthorizedAsync(User user, Client client, string scope);
 

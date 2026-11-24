@@ -2,14 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Linq;
 using backend.Data;
 using backend.Models;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 
 namespace backend.Services
 {
@@ -19,13 +21,15 @@ namespace backend.Services
         private readonly IRsaKeyService _rsaKeyService;
         private readonly Configuration.AppConfig _appConfig;
         private readonly IDbHelper _dbHelper;
+        private readonly ILogger<TokenService> _logger;
 
-        public TokenService(AppDbContext dbContext, IRsaKeyService rsaKeyService, Configuration.AppConfig appConfig, IDbHelper dbHelper)
+        public TokenService(AppDbContext dbContext, IRsaKeyService rsaKeyService, Configuration.AppConfig appConfig, IDbHelper dbHelper, ILogger<TokenService> logger)
         {
             _dbContext = dbContext;
             _rsaKeyService = rsaKeyService;
             _appConfig = appConfig;
             _dbHelper = dbHelper;
+            _logger = logger;
         }
 
         private string Issuer => _appConfig.Jwt.Issuer;
@@ -328,22 +332,39 @@ namespace backend.Services
 
         // ── Refresh Token ───────────────────────────────────────────
 
-        public async Task<string> GenerateRefreshTokenAsync(string userId, string clientId, string scopes, string? sid = null)
+        /// <summary>
+        /// SHA-256 hex hash of a refresh-token secret. Only this hash is stored;
+        /// the raw secret exists solely in the value handed to the client, so a
+        /// database compromise does not yield usable tokens.
+        /// </summary>
+        private static string HashTokenSecret(string secret)
         {
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret))).ToLowerInvariant();
+        }
+
+        public async Task<string> GenerateRefreshTokenAsync(string userId, string clientId, string scopes, string? sid = null, DateTime? createdAt = null)
+        {
+            // The secret is a random GUID that never touches the database. Its
+            // SHA-256 hash becomes the row (and partition) key used for lookup.
+            var secret = Guid.NewGuid().ToString("N");
+
             var token = new Token
             {
-                Id = Guid.NewGuid().ToString().Replace("-", ""),
+                Id = HashTokenSecret(secret),
                 Sid = sid ?? string.Empty,
                 UserId = userId,
                 ClientId = clientId,
                 Scopes = scopes,
+                // Session start; carried unchanged across rotations so the
+                // absolute cap measures the whole session's age.
+                CreatedAt = createdAt ?? DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddDays(30)
             };
 
             _dbContext.Tokens.Add(token);
             await _dbHelper.SaveChangesAsync();
 
-            return $"{token.Id}.{token.Sid}";
+            return $"{secret}.{token.Sid}";
         }
 
         public async Task<Token?> ValidateRefreshTokenAsync(string tokenValue, string clientId)
@@ -352,13 +373,35 @@ namespace backend.Services
                 return null;
 
             var parts = tokenValue.Split('.', 2);
-            var tokenId = parts[0];
+            var tokenId = HashTokenSecret(parts[0]);
             var sid = parts.Length > 1 ? parts[1] : string.Empty;
 
             var token = await _dbContext.Tokens
                 .FirstOrDefaultAsync(t => t.Id == tokenId && t.ClientId == clientId);
 
-            if (token == null || token.ExpiresAt < DateTime.UtcNow)
+            if (token == null)
+                return null;
+
+            // Reuse detection: this token was already rotated once, so whoever is
+            // presenting it holds a stale copy. That is theft evidence (or a
+            // racing client) — revoke the entire session chain either way.
+            if (token.RotatedAt.HasValue)
+            {
+                _logger.LogWarning(
+                    "Refresh token replay detected (user {UserId}, client {ClientId}, session {Sid}). Revoking all tokens for the session.",
+                    token.UserId, token.ClientId, token.Sid);
+                await RevokeSessionAsync(token.Sid);
+                return null;
+            }
+
+            // Absolute lifetime cap. Legacy rows written before CreatedAt existed
+            // deserialize as DateTime.MinValue; they are stamped on their next
+            // rotation instead of being rejected here.
+            if (token.CreatedAt != default &&
+                DateTime.UtcNow > token.CreatedAt.AddDays(_appConfig.Tokens.RefreshTokenAbsoluteLifetimeDays))
+                return null;
+
+            if (token.ExpiresAt < DateTime.UtcNow)
                 return null;
 
             if (token.Sid != sid)
@@ -369,17 +412,88 @@ namespace backend.Services
 
         public async Task<string> RotateRefreshTokenAsync(Token oldToken, string? sid = null)
         {
+            // Keep the old row as a tombstone (RotatedAt set) instead of deleting
+            // it: a later presentation of this token value is replay evidence and
+            // triggers session revocation in ValidateRefreshTokenAsync.
+            oldToken.RotatedAt = DateTime.UtcNow;
+
+            // Carry the session's original issue time into the successor so the
+            // absolute cap measures the session's total age. Legacy rows without
+            // CreatedAt are stamped now — their absolute clock starts here.
+            var createdAt = oldToken.CreatedAt == default ? DateTime.UtcNow : oldToken.CreatedAt;
+
+            // Persist the tombstone marking and the successor together first;
+            // only once the rotation is durable do we run the retention purge,
+            // so a purge race can never leave a half-written rotation.
+            var result = await GenerateRefreshTokenAsync(oldToken.UserId, oldToken.ClientId, oldToken.Scopes, sid ?? oldToken.Sid, createdAt);
+            await PurgeSessionAsync(sid ?? oldToken.Sid);
+
+            return result;
+        }
+
+        /// <summary>
+        /// Retention policy: removes this session's garbage rows — tombstones
+        /// older than the retention window (their replay-detection value has
+        /// lapsed) and expired rows that were never rotated (dead weight that no
+        /// longer distinguishes "expired" from "unknown"). Runs on every
+        /// rotation, so each active session cleans up after itself without
+        /// needing a background job.
+        /// </summary>
+        private async Task PurgeSessionAsync(string sid)
+        {
+            if (string.IsNullOrEmpty(sid))
+                return;
+
+            var cutoff = DateTime.UtcNow.AddDays(-_appConfig.Tokens.TombstoneRetentionDays);
+            var now = DateTime.UtcNow;
+
+            // Sid equality only (in-memory filtering after) so the query stays
+            // safely translatable, matching RevokeSessionAsync's pattern.
+            var sessionTokens = await _dbContext.Tokens
+                .Where(t => t.Sid == sid)
+                .ToListAsync();
+
+            var stale = sessionTokens
+                .Where(t => (t.RotatedAt.HasValue && t.RotatedAt.Value < cutoff)   // aged-out tombstones
+                         || (!t.RotatedAt.HasValue && t.ExpiresAt < now))           // never-rotated, long expired
+                .ToList();
+
+            if (stale.Count == 0)
+                return;
+
+            _dbContext.Tokens.RemoveRange(stale);
+
             try
             {
-                // Remove the old token (one-time use)
-                _dbContext.Tokens.Remove(oldToken);
-
-                // Generate a fresh one, preserving scopes and relational ID
-                return await GenerateRefreshTokenAsync(oldToken.UserId, oldToken.ClientId, oldToken.Scopes, sid ?? oldToken.Sid);
+                await _dbHelper.SaveChangesAsync();
+                _logger.LogDebug("Purged {Count} stale refresh-token rows for session {Sid}.", stale.Count, sid);
             }
             catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Azure.Cosmos.CosmosException { StatusCode: System.Net.HttpStatusCode.NotFound })
             {
-                return string.Empty; // Handled by caller to return Unauthorized
+                // A concurrent rotation/revocation of the same session already
+                // removed some rows — the purge is best-effort, nothing to do.
+            }
+        }
+
+        public async Task RevokeSessionAsync(string sid)
+        {
+            if (string.IsNullOrEmpty(sid))
+                return;
+
+            var sessionTokens = await _dbContext.Tokens
+                .Where(t => t.Sid == sid)
+                .ToListAsync();
+
+            _dbContext.Tokens.RemoveRange(sessionTokens);
+
+            try
+            {
+                await _dbHelper.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Azure.Cosmos.CosmosException { StatusCode: System.Net.HttpStatusCode.NotFound })
+            {
+                // A concurrent revocation already removed some rows — nothing left to do.
+                _logger.LogInformation("Session {Sid} was concurrently revoked; nothing to remove.", sid);
             }
         }
 

@@ -322,13 +322,9 @@ namespace backend.Endpoints
                 }
 
                 var (newAccessToken, grantedScopes) = await _tokenService.GenerateAccessToken(user, client, scopesToUse, sid: sid);
+                // Rotation marks the old token as a tombstone; a replay of that old
+                // value is caught (and the session revoked) during validation.
                 var newRefreshToken = await _tokenService.RotateRefreshTokenAsync(storedToken, sid: sid);
-
-                if (string.IsNullOrEmpty(newRefreshToken))
-                {
-                    _logger.LogWarning("Refresh token rotation failed for client {ClientId}. Token was already used or revoked.", tokenReq.client_id);
-                    return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "Refresh token was already used or revoked." });
-                }
 
 
                 string? idToken = null;

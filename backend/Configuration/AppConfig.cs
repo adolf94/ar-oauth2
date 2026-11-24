@@ -13,6 +13,28 @@ namespace backend.Configuration
 
         // OIDC / JWT
         public JwtConfig Jwt { get; set; } = new();
+
+        // Token lifecycle
+        public TokenConfig Tokens { get; set; } = new();
+    }
+
+    public class TokenConfig
+    {
+        /// <summary>
+        /// Absolute lifetime cap for a refresh-token session. The 30-day sliding
+        /// window keeps the session alive while the client refreshes at least once
+        /// per 30 days, but the session's total age (measured from the first
+        /// token's CreatedAt) must not exceed this. Default: 90 days.
+        /// </summary>
+        public int RefreshTokenAbsoluteLifetimeDays { get; set; } = 90;
+
+        /// <summary>
+        /// How long a rotated refresh token's tombstone row is kept for replay
+        /// detection. A replay within this window triggers session revocation;
+        /// after it lapses the row is purged during the session's next rotation.
+        /// Default: 30 days.
+        /// </summary>
+        public int TombstoneRetentionDays { get; set; } = 30;
     }
 
     public class CosmosConfig

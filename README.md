@@ -209,7 +209,7 @@ Make a `POST` request to the Token endpoint, passing the `code` and the original
   "access_token": "eyJhb...",
   "refresh_token": "dj9a...",
   "token_type": "Bearer",
-  "expires_in": 300,
+  "expires_in": 3600,
   "scope": "openid profile api://inventory-service/read:stock"
 }
 ```
